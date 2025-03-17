@@ -27,8 +27,7 @@ class AuthController extends Controller
             'last_name' => 'required|string',
             'email' => 'required|email|unique:users',
             'phone' => 'required|string|unique:users',
-            'password' => 'required|string|min:6',
-            'confirm_password' => 'required|same:password',
+            'password' => 'required|string|min:6|confirmed',
             'user_type' => 'required|in:customer,provider',
             'address' => 'required_if:user_type,customer,provider|string',
             'provider_type' => 'required_if:user_type,provider|in:individual,organizational',
@@ -107,11 +106,10 @@ class AuthController extends Controller
         $credentials = $request->only('email', 'password');
 
         if (!$token = JWTAuth::attempt($credentials)) {
-            // Log invalid login attempt
             activity()
                 ->withProperties(['email' => $request->email])
                 ->log('Invalid login attempt.');
-            return $this->error('Invalid credentials', 401);
+            return $this->error('The provided email or password is incorrect.', 401);
         }
 
         $user = auth()->user();
@@ -207,6 +205,7 @@ class AuthController extends Controller
     public function logout()
     {
         try {
+            $user = JWTAuth::parseToken()->authenticate();
             $token = JWTAuth::getToken();
             if (!$token) {
                 // Log no token found during logout
@@ -219,7 +218,7 @@ class AuthController extends Controller
 
             // Log successful logout
             activity()
-                // ->performedOn(auth()->user())
+                // ->performedOn($user)
                 ->causedBy(auth()->user())
                 ->withProperties(['user_id' => auth()->id()])
                 ->log('User logged out successfully.');
