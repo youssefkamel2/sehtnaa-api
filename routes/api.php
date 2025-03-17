@@ -34,3 +34,7 @@ Route::prefix('admin')->group(function () {
     Route::post('/approve-document', [AdminController::class, 'approveDocument'])->middleware('auth:api');
     Route::post('/reject-document', [AdminController::class, 'rejectDocument'])->middleware('auth:api');
 });
+
+Route::get('/test', function () {
+    return 'Auto-deploy test successful!';
+});
