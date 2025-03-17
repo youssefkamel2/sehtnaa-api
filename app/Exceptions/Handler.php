@@ -59,34 +59,34 @@ class Handler extends ExceptionHandler
         return $this->error('Unauthorized access. Please log in.', 401);
     }
 
-    public function render($request, Throwable $exception) // Change Exception to Throwable
-    {
-        // Default response for unexpected exceptions
-        $response = [
-            'success' => false,
-            'message' => 'An error occurred. Please try again later.',
-            'code' => 500 // Default error code
-        ];
+    // public function render($request, Throwable $exception) // Change Exception to Throwable
+    // {
+    //     // Default response for unexpected exceptions
+    //     $response = [
+    //         'success' => false,
+    //         'message' => 'An error occurred. Please try again later.',
+    //         'code' => 500 // Default error code
+    //     ];
 
-        // Check for specific exceptions and set the appropriate response
-        if ($exception instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
-            return $this->error('Resource not found.', 404);
-        }
+    //     // Check for specific exceptions and set the appropriate response
+    //     if ($exception instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
+    //         return $this->error('Resource not found.', 404);
+    //     }
 
-        if ($exception instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException) {
-            return $this->error('The requested URL was not found on this server.', 404);
-        }
+    //     if ($exception instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException) {
+    //         return $this->error('The requested URL was not found on this server.', 404);
+    //     }
 
-        if ($exception instanceof \Illuminate\Auth\AuthenticationException) {
-            return $this->unauthenticated($request, $exception);
-        }
+    //     if ($exception instanceof \Illuminate\Auth\AuthenticationException) {
+    //         return $this->unauthenticated($request, $exception);
+    //     }
 
-        // Handle other exceptions
-        if ($exception instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
-            return $this->error($exception->getMessage(), $exception->getStatusCode());
-        }
+    //     // Handle other exceptions
+    //     if ($exception instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
+    //         return $this->error($exception->getMessage(), $exception->getStatusCode());
+    //     }
 
-        // If it's a generic server error, respond with 500
-        return $this->error($response['message'], 500);
-    }
+    //     // If it's a generic server error, respond with 500
+    //     return $this->error($response['message'], 500);
+    // }
 }
