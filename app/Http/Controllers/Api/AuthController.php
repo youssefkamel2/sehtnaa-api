@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
@@ -14,6 +13,7 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Spatie\Activitylog\Models\Activity;
 
 class AuthController extends Controller
 {
@@ -35,6 +35,10 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
+            // Log validation failure
+            activity()
+                ->withProperties(['errors' => $validator->errors()])
+                ->log('Validation failed during registration.');
             return $this->error($validator->errors()->first(), 400);
         }
 
@@ -56,6 +60,14 @@ class AuthController extends Controller
                 $user->customer()->create();
                 $token = JWTAuth::fromUser($user);
                 DB::commit();
+
+                // Log successful customer registration
+                activity()
+                    ->performedOn($user) // Set the subject (the user being registered)
+                    ->causedBy($user) // Set the causer (the user performing the action)
+                    ->withProperties(['user_id' => $user->id, 'email' => $user->email])
+                    ->log('Customer registered successfully.');
+
                 return $this->success([
                     'user' => $user,
                     'token' => $token,
@@ -65,12 +77,26 @@ class AuthController extends Controller
                     'provider_type' => $request->provider_type,
                 ]);
                 DB::commit();
+
+                // Log successful provider registration
+                activity()
+                    ->performedOn($user) // Set the subject (the user being registered)
+                    ->causedBy($user) // Set the causer (the user performing the action)
+                    ->withProperties(['user_id' => $user->id, 'email' => $user->email])
+                    ->log('Provider registered successfully.');
+
                 return $this->success([
                     'user' => $user,
                 ], 'Provider registered successfully. Please upload required documents.', 201);
             }
         } catch (\Exception $e) {
             DB::rollBack();
+
+            // Log registration failure
+            activity()
+                ->withProperties(['error' => $e->getMessage()])
+                ->log('Registration failed.');
+
             return $this->error('Registration failed. Please try again.', 500);
         }
     }
@@ -79,31 +105,35 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $credentials = $request->only('email', 'password');
-    
+
         if (!$token = JWTAuth::attempt($credentials)) {
+            // Log invalid login attempt
+            activity()
+                ->withProperties(['email' => $request->email])
+                ->log('Invalid login attempt.');
             return $this->error('Invalid credentials', 401);
         }
-    
+
         $user = auth()->user();
-    
+
         // Check if the user is a provider
         if ($user->user_type === 'provider') {
             $provider = $user->provider;
-    
+
             // Get the required documents for the provider's type
             $requiredDocuments = RequiredDocument::where('provider_type', $provider->provider_type)->get();
-    
+
             // Get the provider's uploaded documents
             $uploadedDocuments = $provider->documents;
-    
+
             // Check if all required documents are uploaded and approved
             $missingDocuments = [];
             $pendingDocuments = [];
             $rejectedDocuments = [];
-    
+
             foreach ($requiredDocuments as $requiredDocument) {
                 $uploadedDocument = $uploadedDocuments->where('required_document_id', $requiredDocument->id)->first();
-    
+
                 if (!$uploadedDocument) {
                     $missingDocuments[] = $requiredDocument->name;
                 } elseif ($uploadedDocument->status === 'pending') {
@@ -112,9 +142,21 @@ class AuthController extends Controller
                     $rejectedDocuments[] = $requiredDocument->name;
                 }
             }
-    
+
             // If any documents are missing, pending, or rejected, return an error
             if (!empty($missingDocuments) || !empty($pendingDocuments) || !empty($rejectedDocuments)) {
+                // Log provider account under review
+                activity()
+                    // ->performedOn($user)
+                    ->causedBy($user)
+                    ->withProperties([
+                        'user_id' => $user->id,
+                        'missing_documents' => $missingDocuments,
+                        'pending_documents' => $pendingDocuments,
+                        'rejected_documents' => $rejectedDocuments,
+                    ])
+                    ->log('Provider account under review.');
+
                 return $this->error([
                     'missing_documents' => $missingDocuments,
                     'pending_documents' => $pendingDocuments,
@@ -123,17 +165,38 @@ class AuthController extends Controller
                 ], 403);
             }
 
-            // check if the user is pending
+            // Check if the user is pending
             if ($user->status === 'pending') {
+                // Log provider account pending
+                activity()
+                    // ->performedOn($user)
+                    ->causedBy($user)
+                    ->withProperties(['user_id' => $user->id])
+                    ->log('Provider account pending.');
+
                 return $this->error('Your account is under review. Please check your documents.', 403);
             }
         }
-    
+
         // Check if the user is de-active
         if ($user->status === 'de-active') {
+            // Log deactivated account login attempt
+            activity()
+                // ->performedOn($user)
+                ->causedBy($user)
+                ->withProperties(['user_id' => $user->id])
+                ->log('Deactivated account login attempt.');
+
             return $this->error('Your account is deactivated', 403);
         }
-    
+
+        // Log successful login
+        activity()
+            // ->performedOn($user)
+            ->causedBy($user)
+            ->withProperties(['user_id' => $user->id])
+            ->log('User logged in successfully.');
+
         return $this->success([
             'user' => $user,
             'token' => $token,
@@ -146,12 +209,28 @@ class AuthController extends Controller
         try {
             $token = JWTAuth::getToken();
             if (!$token) {
+                // Log no token found during logout
+                activity()
+                    ->log('No token found during logout.');
                 return $this->error('No token found.', 401);
             }
-    
+
             JWTAuth::invalidate($token);
+
+            // Log successful logout
+            activity()
+                // ->performedOn(auth()->user())
+                ->causedBy(auth()->user())
+                ->withProperties(['user_id' => auth()->id()])
+                ->log('User logged out successfully.');
+
             return $this->success(null, 'Successfully logged out.');
         } catch (\Exception $e) {
+            // Log logout failure
+            activity()
+                ->withProperties(['error' => $e->getMessage()])
+                ->log('Logout failed.');
+
             return $this->error('An error occurred during logout.', 500);
         }
     }
@@ -162,12 +241,29 @@ class AuthController extends Controller
         try {
             $user = JWTAuth::parseToken()->authenticate();
             if (!$user) {
+                // Log unauthorized access to /me endpoint
+                activity()
+                    ->log('Unauthorized access to /me endpoint.');
                 return $this->error('Unauthorized access. Please log in.', 401);
             }
-    
+
+            // Eager load provider and customer data
             $user->load('provider', 'customer');
+
+            // Log user details retrieved
+            activity()
+                ->performedOn($user)
+                ->causedBy($user)
+                ->withProperties(['user_id' => $user->id])
+                ->log('User details retrieved.');
+
             return $this->success($user, 'User retrieved successfully');
         } catch (\Exception $e) {
+            // Log error retrieving user details
+            activity()
+                ->withProperties(['error' => $e->getMessage()])
+                ->log('Error retrieving user details.');
+
             return $this->error('An error occurred.', 500);
         }
     }

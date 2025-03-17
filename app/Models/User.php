@@ -6,16 +6,33 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class User extends Authenticatable implements JWTSubject
 {
-    use SoftDeletes, Notifiable;
+    use SoftDeletes, Notifiable, LogsActivity;
 
     protected $fillable = [
         'first_name', 'last_name', 'email', 'phone', 'password', 'user_type', 'status', 'address', 'latitude', 'longitude'
     ];
 
     protected $hidden = ['password'];
+
+    // Define which attributes should be logged
+    protected static $logAttributes = ['first_name', 'last_name', 'email', 'phone', 'user_type', 'status'];
+
+    // Log only changed attributes
+    protected static $logOnlyDirty = true;
+
+    // Customize the log name
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['first_name', 'last_name', 'email', 'phone', 'user_type', 'status'])
+            ->logOnlyDirty()
+            ->useLogName('user');
+    }
 
     // JWT methods
     public function getJWTIdentifier()

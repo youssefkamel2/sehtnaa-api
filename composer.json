@@ -9,8 +9,10 @@
         "guzzlehttp/guzzle": "^7.2",
         "laravel/framework": "^10.10",
         "laravel/sanctum": "^3.3",
+        "laravel/telescope": "^5.5",
         "laravel/tinker": "^2.8",
         "mcamara/laravel-localization": "^2.3",
+        "spatie/laravel-activitylog": "^4.10",
         "tymon/jwt-auth": "^2.2"
     },
     "require-dev": {
