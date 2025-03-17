@@ -15,12 +15,12 @@ return new class extends Migration
             $table->id();
             $table->string('first_name');
             $table->string('last_name');
-            $table->string('email')->unique();
-            $table->string('phone')->unique(); // Add phone column
+            $table->string('email')->unique()->index();
+            $table->string('phone')->unique()->index();
             $table->string('password');
             $table->enum('user_type', ['customer', 'admin', 'provider']);
             $table->enum('status', ['pending', 'active', 'de-active'])->default('pending');
-            $table->text('address')->nullable(); // Add address column
+            $table->text('address')->nullable();
             $table->decimal('latitude', 10, 8)->nullable();
             $table->decimal('longitude', 11, 8)->nullable();
             $table->softDeletes();

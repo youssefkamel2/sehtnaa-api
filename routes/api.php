@@ -11,7 +11,7 @@ Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:api');
-    Route::get('/me', [AuthController::class, 'me'])->middleware('auth:api');
+    Route::get('/me', [AuthController::class, 'me'])->middleware(['auth:api']);
 });
 
 Route::prefix('reset-password')->group(function () {
@@ -27,10 +27,10 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::get('/document-status', [ProviderController::class, 'documentStatus']);
 });
 
-Route::prefix('admin')->group(function () {
-    Route::post('/create-admin', [AdminController::class, 'createAdmin'])->middleware('auth:api');
-    Route::post('/delete-admin', [AdminController::class, 'deleteAdmin'])->middleware('auth:api');
-    Route::post('/deactivate-admin', [AdminController::class, 'deactivateAdmin'])->middleware('auth:api');
-    Route::post('/approve-document', [AdminController::class, 'approveDocument'])->middleware('auth:api');
-    Route::post('/reject-document', [AdminController::class, 'rejectDocument'])->middleware('auth:api');
+Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function () {
+    Route::post('/create-admin', [AdminController::class, 'createAdmin']);
+    Route::post('/delete-admin', [AdminController::class, 'deleteAdmin']);
+    Route::post('/deactivate-admin', [AdminController::class, 'deactivateAdmin']);
+    Route::post('/approve-document', [AdminController::class, 'approveDocument']);
+    Route::post('/reject-document', [AdminController::class, 'rejectDocument']);
 });

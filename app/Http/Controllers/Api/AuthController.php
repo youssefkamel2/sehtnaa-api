@@ -9,6 +9,7 @@ use App\Models\Provider;
 use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\RequiredDocument;
+use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
@@ -37,37 +38,40 @@ class AuthController extends Controller
             return $this->error($validator->errors()->first(), 400);
         }
 
-        $user = User::create([
-            'first_name' => $request->first_name,
-            'last_name' => $request->last_name,
-            'email' => $request->email,
-            'phone' => $request->phone,
-            'password' => Hash::make($request->password),
-            'user_type' => $request->user_type,
-            'status' => $request->user_type === 'provider' ? 'pending' : 'active', // Set status to 'pending' for providers
-            'address' => $request->address,
-        ]);
+        DB::beginTransaction();
 
-        // Create customer or provider record
-        if ($request->user_type === 'customer') {
-            $user->customer()->create();
-
-            // Generate token for customers
-            $token = JWTAuth::fromUser($user);
-
-            return $this->success([
-                'user' => $user,
-                'token' => $token,
-            ], 'Customer registered successfully', 201);
-        } elseif ($request->user_type === 'provider') {
-            $user->provider()->create([
-                'provider_type' => $request->provider_type,
+        try {
+            $user = User::create([
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'password' => Hash::make($request->password),
+                'user_type' => $request->user_type,
+                'status' => $request->user_type === 'provider' ? 'pending' : 'active',
+                'address' => $request->address,
             ]);
 
-            // Do not generate token for providers (status is 'pending')
-            return $this->success([
-                'user' => $user,
-            ], 'Provider registered successfully. Please upload required documents.', 201);
+            if ($request->user_type === 'customer') {
+                $user->customer()->create();
+                $token = JWTAuth::fromUser($user);
+                DB::commit();
+                return $this->success([
+                    'user' => $user,
+                    'token' => $token,
+                ], 'Customer registered successfully', 201);
+            } elseif ($request->user_type === 'provider') {
+                $user->provider()->create([
+                    'provider_type' => $request->provider_type,
+                ]);
+                DB::commit();
+                return $this->success([
+                    'user' => $user,
+                ], 'Provider registered successfully. Please upload required documents.', 201);
+            }
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->error('Registration failed. Please try again.', 500);
         }
     }
 
@@ -161,7 +165,6 @@ class AuthController extends Controller
                 return $this->error('Unauthorized access. Please log in.', 401);
             }
     
-            // Include user role and related data
             $user->load('provider', 'customer');
             return $this->success($user, 'User retrieved successfully');
         } catch (\Exception $e) {
