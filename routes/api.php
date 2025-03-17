@@ -36,5 +36,5 @@ Route::prefix('admin')->group(function () {
 });
 
 Route::get('/test', function () {
-    return 'Auto-deploy test successful!';
+    return 'Auto-deploy test successful!!';
 });
