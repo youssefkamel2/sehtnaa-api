@@ -25,7 +25,7 @@ class Kernel extends ConsoleKernel
     
         // Prune Telescope entries older than 48 hours
         $schedule->command('telescope:prune')
-            ->daily()
+            ->everyMinute()  // Temporarily change to every minute for testing
             ->onSuccess(function () {
                 Log::channel('scheduler')->info('Telescope pruning completed successfully.');
             })
@@ -35,7 +35,7 @@ class Kernel extends ConsoleKernel
     
         // Prune Activity Log entries older than 48 hours
         $schedule->command('activitylog:clean')
-            ->daily()
+            ->everyMinute()  // Temporarily change to every minute for testing
             ->onSuccess(function () {
                 Log::channel('scheduler')->info('Activity Log pruning completed successfully.');
             })
