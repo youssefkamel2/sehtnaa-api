@@ -11,16 +11,42 @@ class Kernel extends ConsoleKernel
     /**
      * Define the application's command schedule.
      */
-    protected function schedule(Schedule $schedule): void
+    protected function schedule(Schedule $schedule)
     {
-        // $schedule->command('inspire')->hourly();
+        // Log the start of the scheduler
         $schedule->call(function () {
-            Log::info('Scheduler is running!');
+            Log::channel('scheduler')->info('Scheduler started at: ' . now());
         })->everyMinute();
-        // clear activity logs after 48 hours
-        $schedule->command('activitylog:clean')->daily();
-        // clear laravel telescope after 48 hours
-        $schedule->command('telescope:prune')->daily();
+    
+        // Test task: Log a message every minute
+        $schedule->call(function () {
+            Log::channel('scheduler')->info('Scheduler is running!');
+        })->everyMinute();
+    
+        // Prune Telescope entries older than 48 hours
+        $schedule->command('telescope:prune')
+            ->daily()
+            ->onSuccess(function () {
+                Log::channel('scheduler')->info('Telescope pruning completed successfully.');
+            })
+            ->onFailure(function () {
+                Log::channel('scheduler')->error('Telescope pruning failed.');
+            });
+    
+        // Prune Activity Log entries older than 48 hours
+        $schedule->command('activitylog:clean')
+            ->daily()
+            ->onSuccess(function () {
+                Log::channel('scheduler')->info('Activity Log pruning completed successfully.');
+            })
+            ->onFailure(function () {
+                Log::channel('scheduler')->error('Activity Log pruning failed.');
+            });
+    
+        // Log the end of the scheduler
+        $schedule->call(function () {
+            Log::channel('scheduler')->info('Scheduler finished at: ' . now());
+        })->everyMinute();
     }
 
     /**
