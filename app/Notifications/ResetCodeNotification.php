@@ -39,10 +39,6 @@ class ResetCodeNotification extends Notification implements ShouldQueue
     {
         return (new MailMessage)
             ->subject('Your Password Reset Code')
-            ->line('We received a request to reset your password.')
-            ->line('Use the following code to reset your password:')
-            ->line("**{$this->code}**") // Highlight the code for emphasis
-            ->line('This code is valid for 15 minutes.')
-            ->line('If you did not request a password reset, please ignore this email.');
+            ->view('emails.reset-password', ['code' => $this->code]);
     }
 }
