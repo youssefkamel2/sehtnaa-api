@@ -8,6 +8,8 @@ use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
+use DateTimeInterface;
+
 
 class User extends Authenticatable implements JWTSubject
 {
@@ -24,6 +26,11 @@ class User extends Authenticatable implements JWTSubject
 
     // Log only changed attributes
     protected static $logOnlyDirty = true;
+
+    protected function serializeDate(DateTimeInterface $date)
+    {
+        return $date->format('Y-m-d H:i:s'); // Format the date in the desired time zone
+    }
 
     // Customize the log name
     public function getActivitylogOptions(): LogOptions
