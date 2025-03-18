@@ -29,7 +29,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected function serializeDate(DateTimeInterface $date)
     {
-        return $date->format('Y-m-d H:i:s'); // Format the date in the desired time zone
+        return $date->format('Y-m-d H:i:s'); 
     }
 
     // Customize the log name

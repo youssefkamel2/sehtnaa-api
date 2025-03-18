@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\RateLimiter;
 use App\Notifications\ResetCodeNotification;
+use Spatie\Activitylog\Models\Activity;
 
 class ResetPasswordController extends Controller
 {
@@ -23,6 +24,7 @@ class ResetPasswordController extends Controller
     {
         // Rate limiting: 5 attempts per minute
         if (RateLimiter::tooManyAttempts('send-reset-code:' . $request->ip(), 5)) {
+            Log::warning('Rate limit exceeded for sending reset code.', ['ip' => $request->ip()]);
             return $this->error('Too many attempts. Please try again later.', 429);
         }
 
@@ -31,6 +33,10 @@ class ResetPasswordController extends Controller
         ]);
 
         if ($validator->fails()) {
+            // Log validation failure
+            activity()
+                ->withProperties(['errors' => $validator->errors()])
+                ->log('Validation failed during reset code request.');
             return $this->error($validator->errors()->first(), 422);
         }
 
@@ -39,6 +45,11 @@ class ResetPasswordController extends Controller
 
         // Check if the user is active
         if ($user->status !== 'active') {
+            // Log inactive account attempt
+            activity()
+                ->performedOn($user)
+                ->withProperties(['email' => $request->email])
+                ->log('Inactive account attempted to request reset code.');
             return $this->error('Your account is not active.', 403);
         }
 
@@ -64,6 +75,12 @@ class ResetPasswordController extends Controller
         // Increment rate limiter
         RateLimiter::hit('send-reset-code:' . $request->ip());
 
+        // Log successful reset code request
+        activity()
+            ->performedOn($user)
+            ->withProperties(['email' => $request->email])
+            ->log('Reset code sent successfully.');
+
         return $this->success(null, 'Reset code sent to your email.');
     }
 
@@ -72,6 +89,7 @@ class ResetPasswordController extends Controller
     {
         // Rate limiting: 5 attempts per minute
         if (RateLimiter::tooManyAttempts('verify-reset-code:' . $request->ip(), 5)) {
+            Log::warning('Rate limit exceeded for verifying reset code.', ['ip' => $request->ip()]);
             return $this->error('Too many attempts. Please try again later.', 429);
         }
 
@@ -81,6 +99,10 @@ class ResetPasswordController extends Controller
         ]);
 
         if ($validator->fails()) {
+            // Log validation failure
+            activity()
+                ->withProperties(['errors' => $validator->errors()])
+                ->log('Validation failed during reset code verification.');
             return $this->error($validator->errors()->first(), 422);
         }
 
@@ -88,6 +110,10 @@ class ResetPasswordController extends Controller
 
         // Check if reset code exists and has not expired
         if (!$resetCode || $resetCode->expires_at < now()) {
+            // Log invalid or expired reset code attempt
+            activity()
+                ->withProperties(['email' => $request->email])
+                ->log('Invalid or expired reset code attempt.');
             return $this->error('Invalid or expired reset code.', 400);
         }
 
@@ -98,14 +124,18 @@ class ResetPasswordController extends Controller
             // Check if attempts exceeded limit
             if ($resetCode->attempts >= 5) {
                 $resetCode->delete(); // Invalidate the reset code
+
+                // Log too many failed attempts
+                activity()
+                    ->withProperties(['email' => $request->email])
+                    ->log('Too many failed reset code attempts. Code invalidated.');
                 return $this->error('Too many attempts. Please request a new code.', 429);
             }
 
-            // Log failed attempt
-            Log::warning('Failed reset code attempt', [
-                'email' => $request->email,
-                'ip' => $request->ip(),
-            ]);
+            // Log failed reset code attempt
+            activity()
+                ->withProperties(['email' => $request->email, 'ip' => $request->ip()])
+                ->log('Failed reset code attempt.');
 
             // Increment rate limiter
             RateLimiter::hit('verify-reset-code:' . $request->ip());
@@ -116,6 +146,11 @@ class ResetPasswordController extends Controller
         // Mark code as used
         $resetCode->delete();
 
+        // Log successful reset code verification
+        activity()
+            ->withProperties(['email' => $request->email])
+            ->log('Reset code verified successfully.');
+
         return $this->success(null, 'Code verified. Proceed to reset password.');
     }
 
@@ -124,6 +159,7 @@ class ResetPasswordController extends Controller
     {
         // Rate limiting: 5 attempts per minute
         if (RateLimiter::tooManyAttempts('reset-password:' . $request->ip(), 5)) {
+            Log::warning('Rate limit exceeded for resetting password.', ['ip' => $request->ip()]);
             return $this->error('Too many attempts. Please try again later.', 429);
         }
 
@@ -136,6 +172,10 @@ class ResetPasswordController extends Controller
 
         // Return validation errors, if any
         if ($validator->fails()) {
+            // Log validation failure
+            activity()
+                ->withProperties(['errors' => $validator->errors()])
+                ->log('Validation failed during password reset.');
             return $this->error($validator->errors()->first(), 422);
         }
 
@@ -143,11 +183,20 @@ class ResetPasswordController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (!$user) {
+            // Log user not found
+            activity()
+                ->withProperties(['email' => $request->email])
+                ->log('User not found during password reset.');
             return $this->error('User not found.', 404);
         }
 
         // Check if the user is active
         if ($user->status !== 'active') {
+            // Log inactive account attempt
+            activity()
+                ->performedOn($user)
+                ->withProperties(['email' => $request->email])
+                ->log('Inactive account attempted to reset password.');
             return $this->error('Your account is not active.', 403);
         }
 
@@ -157,6 +206,12 @@ class ResetPasswordController extends Controller
 
         // Invalidate any existing reset codes
         PasswordResetCode::where('email', $request->email)->delete();
+
+        // Log successful password reset
+        activity()
+            ->performedOn($user)
+            ->withProperties(['email' => $request->email])
+            ->log('Password reset successfully.');
 
         return $this->success(null, 'Password has been reset successfully.');
     }
