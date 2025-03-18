@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
@@ -103,8 +104,23 @@ class AuthController extends Controller
     // Login
     public function login(Request $request)
     {
-        $credentials = $request->only('email', 'password');
+        // Validate the request
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'password' => 'required|string',
+            'user_type' => 'required|in:customer,provider,admin',
+        ]);
 
+        if ($validator->fails()) {
+            // Log validation failure
+            activity()
+                ->withProperties(['errors' => $validator->errors()])
+                ->log('Validation failed during login.');
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        // Attempt to authenticate the user
+        $credentials = $request->only('email', 'password');
         if (!$token = JWTAuth::attempt($credentials)) {
             activity()
                 ->withProperties(['email' => $request->email])
@@ -112,9 +128,18 @@ class AuthController extends Controller
             return $this->error('The provided email or password is incorrect.', 401);
         }
 
+        // Get the authenticated user
         $user = auth()->user();
 
-        // Check if the user is a provider
+        // Check if the user_type matches the requested user_type
+        if ($user->user_type !== $request->user_type) {
+            activity()
+                ->withProperties(['email' => $request->email, 'user_type' => $request->user_type])
+                ->log('User type mismatch during login.');
+            return $this->error('You are not authorized to access this account type.', 403);
+        }
+
+        // Handle provider-specific checks
         if ($user->user_type === 'provider') {
             $provider = $user->provider;
 
@@ -145,7 +170,6 @@ class AuthController extends Controller
             if (!empty($missingDocuments) || !empty($pendingDocuments) || !empty($rejectedDocuments)) {
                 // Log provider account under review
                 activity()
-                    // ->performedOn($user)
                     ->causedBy($user)
                     ->withProperties([
                         'user_id' => $user->id,
@@ -167,7 +191,6 @@ class AuthController extends Controller
             if ($user->status === 'pending') {
                 // Log provider account pending
                 activity()
-                    // ->performedOn($user)
                     ->causedBy($user)
                     ->withProperties(['user_id' => $user->id])
                     ->log('Provider account pending.');
@@ -180,7 +203,6 @@ class AuthController extends Controller
         if ($user->status === 'de-active') {
             // Log deactivated account login attempt
             activity()
-                // ->performedOn($user)
                 ->causedBy($user)
                 ->withProperties(['user_id' => $user->id])
                 ->log('Deactivated account login attempt.');
@@ -190,9 +212,8 @@ class AuthController extends Controller
 
         // Log successful login
         activity()
-            // ->performedOn($user)
             ->causedBy($user)
-            ->withProperties(['user_id' => $user->id])
+            ->withProperties(['user_id' => $user->id, 'user_type' => $user->user_type])
             ->log('User logged in successfully.');
 
         return $this->success([
@@ -200,7 +221,6 @@ class AuthController extends Controller
             'token' => $token,
         ], 'Login successful');
     }
-
     // Logout
     public function logout()
     {

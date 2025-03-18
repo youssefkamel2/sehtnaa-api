@@ -25,6 +25,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::post('/upload-document', [ProviderController::class, 'uploadDocument']);
     Route::get('/documents', [ProviderController::class, 'listDocuments']);
     Route::get('/document-status', [ProviderController::class, 'documentStatus']);
+    Route::get('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
 });
 
 Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function () {

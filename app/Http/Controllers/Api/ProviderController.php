@@ -119,4 +119,20 @@ class ProviderController extends Controller
 
         return $this->success($status, 'Document status retrieved successfully');
     }
+
+    // get all needed documents based on provider_type
+    public function getRequiredDocuments(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'provider_type' => 'required|in:individual,organizational',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 400);
+        }
+
+        $requiredDocuments = RequiredDocument::where('provider_type', $request->provider_type)->get();
+
+        return $this->success($requiredDocuments, 'Required documents retrieved successfully');
+    }
 }
