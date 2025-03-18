@@ -16,16 +16,16 @@ class Kernel extends ConsoleKernel
         // Log the start of the scheduler
         $schedule->call(function () {
             Log::channel('scheduler')->info('Scheduler started at: ' . now());
-        })->everyMinute();
+        })->hourly();  // Run every hour
     
-        // Test task: Log a message every minute
+        // Log a message every hour
         $schedule->call(function () {
             Log::channel('scheduler')->info('Scheduler is running!');
-        })->everyMinute();
+        })->hourly();  // Run every hour
     
         // Prune Telescope entries older than 48 hours
         $schedule->command('telescope:prune')
-            ->everyMinute()  // Temporarily change to every minute for testing
+            ->hourly()  // Run every hour
             ->onSuccess(function () {
                 Log::channel('scheduler')->info('Telescope pruning completed successfully.');
             })
@@ -35,7 +35,7 @@ class Kernel extends ConsoleKernel
     
         // Prune Activity Log entries older than 48 hours
         $schedule->command('activitylog:clean')
-            ->everyMinute()  // Temporarily change to every minute for testing
+            ->hourly()  // Run every hour
             ->onSuccess(function () {
                 Log::channel('scheduler')->info('Activity Log pruning completed successfully.');
             })
@@ -46,7 +46,7 @@ class Kernel extends ConsoleKernel
         // Log the end of the scheduler
         $schedule->call(function () {
             Log::channel('scheduler')->info('Scheduler finished at: ' . now());
-        })->everyMinute();
+        })->hourly();  // Run every hour
     }
 
     /**

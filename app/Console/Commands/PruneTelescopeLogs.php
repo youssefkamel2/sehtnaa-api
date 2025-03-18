@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PruneTelescopeLogs extends Command
 {
@@ -12,10 +13,12 @@ class PruneTelescopeLogs extends Command
 
     public function handle()
     {
-        // delte logs more than 1 minute old
-        $cutoff = now()->subMinutes(1);
-        // $cutoff = now()->subHours(48);
-        DB::table('telescope_entries')->where('created_at', '<', $cutoff)->delete();
-        $this->info('Telescope logs pruned successfully.');
+        // Delete logs older than 48 hours
+        $cutoff = now()->subHours(48);
+        $deletedRows = DB::table('telescope_entries')->where('created_at', '<', $cutoff)->delete();
+
+        // Log the result
+        Log::channel('scheduler')->info("Pruned $deletedRows Telescope logs older than 48 hours.");
+        $this->info("Pruned $deletedRows Telescope logs older than 48 hours.");
     }
 }
