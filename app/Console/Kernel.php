@@ -13,6 +13,10 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('inspire')->hourly();
+        // clear activity logs after 48 hours
+        $schedule->command('activitylog:clean')->daily();
+        // clear laravel telescope after 48 hours
+        $schedule->command('telescope:prune')->daily();
     }
 
     /**
