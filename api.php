@@ -23,9 +23,9 @@ Route::prefix('reset-password')->group(function () {
 // Provider routes
 Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::post('/upload-document', [ProviderController::class, 'uploadDocument']);
-    Route::post('/documents', [ProviderController::class, 'listDocuments']);
-    Route::post('/document-status', [ProviderController::class, 'documentStatus']);
-    Route::post('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
+    Route::get('/documents', [ProviderController::class, 'listDocuments']);
+    Route::get('/document-status', [ProviderController::class, 'documentStatus']);
+    Route::get('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
 });
 
 Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function () {
@@ -34,5 +34,4 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     Route::post('/deactivate-admin', [AdminController::class, 'deactivateAdmin']);
     Route::post('/approve-document', [AdminController::class, 'approveDocument']);
     Route::post('/reject-document', [AdminController::class, 'rejectDocument']);
-    Route::post('/add-document', [AdminController::class, 'addRequiredDocument']);
 });
