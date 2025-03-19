@@ -34,4 +34,5 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     Route::post('/deactivate-admin', [AdminController::class, 'deactivateAdmin']);
     Route::post('/approve-document', [AdminController::class, 'approveDocument']);
     Route::post('/reject-document', [AdminController::class, 'rejectDocument']);
+    Route::post('/add-document', [AdminController::class, 'addRequiredDocument']);
 });

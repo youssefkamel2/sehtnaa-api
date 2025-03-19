@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\User;
 use App\Models\Admin;
-use App\Models\ProviderDocument;
 use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Hash;
-use Tymon\JWTAuth\Facades\JWTAuth;
 use App\Traits\ResponseTrait;
+use App\Models\ProviderDocument;
+use App\Models\RequiredDocument;
+use Tymon\JWTAuth\Facades\JWTAuth;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
 class AdminController extends Controller
 {
@@ -222,4 +223,26 @@ class AdminController extends Controller
 
         return $this->success(null, 'Document rejected successfully.');
     }
+
+    // add required documents for specific provider type [name, prover_type]
+    public function addRequiredDocument(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string',
+            'provider_type' => 'required|in:individual,organizational',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 400);
+        }
+
+        // Create the required document
+        RequiredDocument::create([
+            'name' => $request->name,
+            'provider_type' => $request->provider_type,
+        ]);
+
+        return $this->success(null, 'Required document added successfully.');
+    }
+
 }
