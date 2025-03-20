@@ -85,42 +85,34 @@ class ProviderController extends Controller
         $validator = Validator::make($request->all(), [
             'email' => 'required|email|exists:users,email', // Identify the provider by email
         ]);
-
         if ($validator->fails()) {
             return $this->error($validator->errors()->first(), 400);
         }
-
         // Find the provider by email
         $user = User::where('email', $request->email)->first();
         $provider = $user->provider;
-
         if (!$provider) {
             return $this->error('Provider not found.', 404);
         }
-
         // Get the required documents for the provider's type
         $requiredDocuments = RequiredDocument::where('provider_type', $provider->provider_type)->get();
-
         // Get the provider's uploaded documents
         $uploadedDocuments = $provider->documents;
-
-        // Prepare the response
+        // Prepare the response - only include uploaded documents
         $status = [];
-
         foreach ($requiredDocuments as $requiredDocument) {
             $uploadedDocument = $uploadedDocuments->where('required_document_id', $requiredDocument->id)->first();
-
-            $status[] = [
-                'document_name' => $requiredDocument->name,
-                'status' => $uploadedDocument ? $uploadedDocument->status : 'missing',
-                'document_path' => $uploadedDocument ? $uploadedDocument->document_path : null,
-            ];
+            if ($uploadedDocument) {
+                $status[] = [
+                    'document_name' => $requiredDocument->name,
+                    'status' => $uploadedDocument->status,
+                    'document_path' => $uploadedDocument->document_path,
+                ];
+            }
         }
-
         return $this->success($status, 'Document status retrieved successfully');
     }
-
-    // get all needed documents based on provider_type
+    
     public function getRequiredDocuments(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -153,7 +145,10 @@ class ProviderController extends Controller
             $uploadedDocument = $uploadedDocuments->where('required_document_id', $requiredDocument->id)->first();
             return $uploadedDocument && in_array($uploadedDocument->status, ['approved', 'pending']);
         });
+        
+        // Convert to array to ensure sequential numeric indices
+        $remainingDocumentsArray = $remainingDocuments->values()->all();
     
-        return $this->success($remainingDocuments, 'Remaining required documents retrieved successfully');
+        return $this->success($remainingDocumentsArray, 'Remaining required documents retrieved successfully');
     }
 }
