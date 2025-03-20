@@ -134,8 +134,6 @@ class ProviderController extends Controller
                         'required_document_id' => $requiredDocument->id,
                         'document_name' => $requiredDocument->name,
                         'status' => $uploadedDocument->status,
-                        'document_path' => $uploadedDocument->document_path,
-                        'updated_at' => $uploadedDocument->updated_at->toDateTimeString()
                     ];
                     
                     // Track status counts
