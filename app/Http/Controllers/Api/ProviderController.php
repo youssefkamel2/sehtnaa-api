@@ -124,15 +124,36 @@ class ProviderController extends Controller
     public function getRequiredDocuments(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'provider_type' => 'required|in:individual,organizational',
+            'email' => 'required|email|exists:users,email', // Validate email
         ]);
-
+    
         if ($validator->fails()) {
             return $this->error($validator->errors()->first(), 400);
         }
-
-        $requiredDocuments = RequiredDocument::where('provider_type', $request->provider_type)->get();
-
-        return $this->success($requiredDocuments, 'Required documents retrieved successfully');
+    
+        // Fetch the user (provider) by email
+        $user = User::where('email', $request->email)->first();
+    
+        // Ensure the user is a provider
+        if ($user->user_type !== 'provider') {
+            return $this->error('The provided email does not belong to a provider.', 400);
+        }
+    
+        // Get the provider's type
+        $providerType = $user->provider->provider_type;
+    
+        // Get the required documents for the provider's type
+        $requiredDocuments = RequiredDocument::where('provider_type', $providerType)->get();
+    
+        // Get the documents uploaded by the provider
+        $uploadedDocuments = $user->provider->documents;
+    
+        // Filter out documents that are approved or pending
+        $remainingDocuments = $requiredDocuments->reject(function ($requiredDocument) use ($uploadedDocuments) {
+            $uploadedDocument = $uploadedDocuments->where('required_document_id', $requiredDocument->id)->first();
+            return $uploadedDocument && in_array($uploadedDocument->status, ['approved', 'pending']);
+        });
+    
+        return $this->success($remainingDocuments, 'Remaining required documents retrieved successfully');
     }
 }
