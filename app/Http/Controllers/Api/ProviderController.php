@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Provider;
-use App\Models\RequiredDocument;
-use App\Models\ProviderDocument;
 use App\Models\User;
+use App\Models\Provider;
 use Illuminate\Http\Request;
+use App\Traits\ResponseTrait;
+use App\Models\ProviderDocument;
+use App\Models\RequiredDocument;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
-use App\Traits\ResponseTrait;
 
 class ProviderController extends Controller
 {
@@ -82,35 +83,107 @@ class ProviderController extends Controller
     // Get the status of uploaded documents
     public function documentStatus(Request $request)
     {
+        // Validate request
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email|exists:users,email', // Identify the provider by email
+            'email' => 'required|email|exists:users,email',
         ]);
+        
         if ($validator->fails()) {
             return $this->error($validator->errors()->first(), 400);
         }
-        // Find the provider by email
-        $user = User::where('email', $request->email)->first();
-        $provider = $user->provider;
-        if (!$provider) {
-            return $this->error('Provider not found.', 404);
-        }
-        // Get the required documents for the provider's type
-        $requiredDocuments = RequiredDocument::where('provider_type', $provider->provider_type)->get();
-        // Get the provider's uploaded documents
-        $uploadedDocuments = $provider->documents;
-        // Prepare the response - only include uploaded documents
-        $status = [];
-        foreach ($requiredDocuments as $requiredDocument) {
-            $uploadedDocument = $uploadedDocuments->where('required_document_id', $requiredDocument->id)->first();
-            if ($uploadedDocument) {
-                $status[] = [
-                    'document_name' => $requiredDocument->name,
-                    'status' => $uploadedDocument->status,
-                    'document_path' => $uploadedDocument->document_path,
-                ];
+        
+        try {
+            // Find the user and provider
+            $user = User::where('email', $request->email)->first();
+            
+            if (!$user || !$user->provider) {
+                return $this->error('Provider not found.', 404);
             }
+            
+            $provider = $user->provider;
+            
+            // Get required documents for the provider's type
+            $requiredDocuments = RequiredDocument::where('provider_type', $provider->provider_type)->get();
+            
+            if ($requiredDocuments->isEmpty()) {
+                return $this->success([
+                    'documents' => [],
+                    'account_status' => 'pending'
+                ], 'No required documents found for this provider type');
+            }
+            
+            // Get uploaded documents
+            $uploadedDocuments = $provider->documents;
+            
+            // Track document statuses
+            $hasRejected = false;
+            $hasPending = false;
+            $allDocumentsUploaded = true;
+            $requiredCount = $requiredDocuments->count();
+            $approvedCount = 0;
+            
+            // Prepare documents array
+            $documents = [];
+            
+            foreach ($requiredDocuments as $requiredDocument) {
+                $uploadedDocument = $uploadedDocuments->where('required_document_id', $requiredDocument->id)->first();
+                
+                if ($uploadedDocument) {
+                    $documents[] = [
+                        'document_id' => $uploadedDocument->id,
+                        'required_document_id' => $requiredDocument->id,
+                        'document_name' => $requiredDocument->name,
+                        'status' => $uploadedDocument->status,
+                        'document_path' => $uploadedDocument->document_path,
+                        'updated_at' => $uploadedDocument->updated_at->toDateTimeString()
+                    ];
+                    
+                    // Track status counts
+                    switch ($uploadedDocument->status) {
+                        case 'rejected':
+                            $hasRejected = true;
+                            break;
+                        case 'pending':
+                            $hasPending = true;
+                            break;
+                        case 'approved':
+                            $approvedCount++;
+                            break;
+                    }
+                } else {
+                    $allDocumentsUploaded = false;
+                }
+            }
+            
+            // Determine account status
+            $accountStatus = 'pending'; // Default
+            
+            if ($hasRejected) {
+                $accountStatus = 'rejected';
+            } elseif ($hasPending || !$allDocumentsUploaded) {
+                $accountStatus = 'pending';
+            } elseif ($approvedCount === $requiredCount) {
+                $accountStatus = 'approved';
+            }
+            
+            // Prepare response
+            $responseData = [
+                'documents' => $documents,
+                'account_status' => $accountStatus,
+                'upload_progress' => [
+                    'total_required' => $requiredCount,
+                    'uploaded' => count($documents),
+                    'pending' => $hasPending ? 'yes' : 'no',
+                    'rejected' => $hasRejected ? 'yes' : 'no'
+                ]
+            ];
+            
+            return $this->success($responseData, 'Document status retrieved successfully');
+        } catch (\Exception $e) {
+            // Log the error
+            Log::error('Document status error: ' . $e->getMessage());
+            return $this->error('An error occurred while retrieving document status', 500);
         }
-        return $this->success($status, 'Document status retrieved successfully');
     }
     
     public function getRequiredDocuments(Request $request)
