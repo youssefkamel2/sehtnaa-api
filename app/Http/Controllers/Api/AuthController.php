@@ -136,7 +136,7 @@ class AuthController extends Controller
             activity()
                 ->withProperties(['email' => $request->email, 'user_type' => $request->user_type])
                 ->log('User type mismatch during login.');
-            return $this->error('You are not authorized to access this account type.', 403);
+            return $this->error('You are not authorized to access this account type.', 422);
         }
 
         // Handle provider-specific checks
