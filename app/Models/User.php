@@ -16,7 +16,7 @@ class User extends Authenticatable implements JWTSubject
     use SoftDeletes, Notifiable, LogsActivity;
 
     protected $fillable = [
-        'first_name', 'last_name', 'email', 'phone', 'password', 'user_type', 'status', 'address', 'latitude', 'longitude'
+        'first_name', 'last_name', 'email', 'phone', 'password', 'user_type', 'status', 'address', 'latitude', 'longitude', 'fcm_token', 'profile_image', 'device_type'
     ];
 
     protected $hidden = ['password'];

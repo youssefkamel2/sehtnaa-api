@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\ProviderController;
 use App\Http\Controllers\Api\ResetPasswordController;
@@ -35,4 +36,13 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     Route::post('/approve-document', [AdminController::class, 'approveDocument']);
     Route::post('/reject-document', [AdminController::class, 'rejectDocument']);
     Route::post('/add-document', [AdminController::class, 'addRequiredDocument']);
+});
+
+
+Route::prefix('user')->middleware(['auth:api'])->group(function () {
+
+    Route::post('/update-profile', [UserController::class, 'updateProfile']);
+    Route::post('/update-location', [UserController::class, 'updateLocation']);
+    Route::post('/update-fcm-token', [UserController::class, 'updateFcmToken']);
+
 });

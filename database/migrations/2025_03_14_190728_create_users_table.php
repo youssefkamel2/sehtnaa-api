@@ -23,6 +23,9 @@ return new class extends Migration
             $table->text('address')->nullable();
             $table->decimal('latitude', 10, 8)->nullable();
             $table->decimal('longitude', 11, 8)->nullable();
+            $table->string('fcm_token')->nullable();
+            $table->string('device_type')->nullable();
+            $table->string('profile_image')->nullable();
             $table->softDeletes();
             $table->timestamps();
         });
