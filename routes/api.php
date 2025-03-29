@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProviderController;
 use App\Http\Controllers\Api\ResetPasswordController;
 use App\Http\Controllers\Api\TestNotificationController;
@@ -45,9 +46,29 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
     Route::post('/update-profile', [UserController::class, 'updateProfile']);
     Route::post('/update-location', [UserController::class, 'updateLocation']);
     Route::post('/update-fcm-token', [UserController::class, 'updateFcmToken']);
+    Route::post('/update-language', [UserController::class, 'updateLanguage']);
 
 });
+
+
+Route::prefix('categories')->group(function () {
+    Route::get('/', [CategoryController::class, 'index']);
+    Route::post('/', [CategoryController::class, 'store'])->middleware(['auth:api', 'role:admin']);
+    Route::get('/{id}', [CategoryController::class, 'show']);
+    Route::put('/{id}', [CategoryController::class, 'update'])->middleware(['auth:api', 'role:admin']);
+    Route::delete('/{id}', [CategoryController::class, 'destroy'])->middleware(['auth:api', 'role:admin']);
+    Route::post('/{id}/toggle-status', [CategoryController::class, 'toggleStatus'])->middleware(['auth:api', 'role:admin']);
+});
+
+
+
+
+
+
+
+
 
 Route::middleware('auth:api')->group(function () {
     Route::post('/send-test-notification', [TestNotificationController::class, 'sendTestNotification']);
 });
+
