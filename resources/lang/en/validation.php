@@ -32,5 +32,6 @@ return [
         'fcm_token' => 'FCM token',
         'device_type' => 'device type',
         'language' => 'language',
+        'icon' => 'icon',
     ],
 ];
