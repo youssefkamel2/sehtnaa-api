@@ -12,9 +12,9 @@ use Mcamara\LaravelLocalization\Facades\LaravelLocalization;
 
 class CategoryController extends Controller
 {
-    use ResponseTrait;    
-    
-    public function index(Request $request) {
+    use ResponseTrait;
+    public function index(Request $request)
+    {
         try {
             $categories = Category::with('addedBy')
                 ->ordered()
@@ -23,9 +23,9 @@ class CategoryController extends Controller
                 })
                 ->get();
 
-            return $this->success($categories, "Categories Retreived Successfully");
+            return $this->success($categories, 'Categories fetched successfully');
         } catch (\Exception $e) {
-            return $this->error(__('messages.category.fetch_failed' . $e), 500);
+            return $this->error('Failed to fetch categories', 500);
         }
     }
 
@@ -69,9 +69,9 @@ class CategoryController extends Controller
                 'is_active' => true
             ]);
 
-            return $this->success($category, __('messages.category.created'), 201);
+            return $this->success($category, 'Category created successfully', 201);
         } catch (\Exception $e) {
-            return $this->error(__('messages.category.creation_failed' . $e), 500);
+            return $this->error('Failed to create category', 500);
         }
     }
 
@@ -81,12 +81,12 @@ class CategoryController extends Controller
             $category = Category::with(['services', 'addedBy'])->find($id);
 
             if (!$category) {
-                return $this->error(__('messages.category.not_found'), 404);
+                return $this->error('Category not found', 404);
             }
 
             return $this->success($category);
         } catch (\Exception $e) {
-            return $this->error(__('messages.category.fetch_failed'), 500);
+            return $this->error('Failed to fetch categories', 500);
         }
     }
 
@@ -95,7 +95,7 @@ class CategoryController extends Controller
         $category = Category::find($id);
 
         if (!$category) {
-            return $this->error(__('messages.category.not_found'), 404);
+            return $this->error('Category not found', 404);
         }
 
         $validator = Validator::make($request->all(), [
@@ -138,9 +138,9 @@ class CategoryController extends Controller
 
             $category->update($updateData);
 
-            return $this->success($category, __('messages.category.updated'));
+            return $this->success($category, 'Category updated successfully');
         } catch (\Exception $e) {
-            return $this->error(__('messages.category.update_failed'), 500);
+            return $this->error('Failed to update category', 500);
         }
     }
 
@@ -150,7 +150,7 @@ class CategoryController extends Controller
             $category = Category::find($id);
 
             if (!$category) {
-                return $this->error(__('messages.category.not_found'), 404);
+                return $this->error('Category not found', 404);
             }
 
             if ($category->icon) {
@@ -160,9 +160,9 @@ class CategoryController extends Controller
 
             $category->delete();
 
-            return $this->success(null, __('messages.category.deleted'));
+            return $this->success(null, 'Category deleted successfully');
         } catch (\Exception $e) {
-            return $this->error(__('messages.category.delete_failed'), 500);
+            return $this->error('Failed to delete category', 500);
         }
     }
 
@@ -172,7 +172,7 @@ class CategoryController extends Controller
             $category = Category::find($id);
 
             if (!$category) {
-                return $this->error(__('messages.category.not_found'), 404);
+                return $this->error('Category not found', 404);
             }
 
             $category->update([
@@ -181,11 +181,12 @@ class CategoryController extends Controller
 
             return $this->success(
                 ['is_active' => $category->is_active],
-                __('messages.category.status_changed')
+                'Category status updated'
             );
         } catch (\Exception $e) {
-            return $this->error(__('messages.category.status_change_failed'), 500);
+            return $this->error('Failed to change category status', 500);
         }
     }
+
 
 }

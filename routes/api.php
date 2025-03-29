@@ -64,10 +64,6 @@ Route::prefix('categories')->group(function () {
 
 
 
-
-
-
-
 Route::middleware('auth:api')->group(function () {
     Route::post('/send-test-notification', [TestNotificationController::class, 'sendTestNotification']);
 });
