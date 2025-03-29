@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\ProviderController;
 use App\Http\Controllers\Api\ResetPasswordController;
+use App\Http\Controllers\Api\TestNotificationController;
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -45,4 +46,8 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
     Route::post('/update-location', [UserController::class, 'updateLocation']);
     Route::post('/update-fcm-token', [UserController::class, 'updateFcmToken']);
 
+});
+
+Route::middleware('auth:api')->group(function () {
+    Route::post('/send-test-notification', [TestNotificationController::class, 'sendTestNotification']);
 });
