@@ -40,10 +40,6 @@ class CategoryController extends Controller
             'description.ar' => 'sometimes|string',
             'icon' => 'required|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
             'order' => 'sometimes|integer|min:0',
-        ], [
-            'name.en.required' => __('validation.name_en_required'),
-            'name.ar.required' => __('validation.name_ar_required'),
-            'icon.required' => __('validation.icon_required'),
         ]);
 
         if ($validator->fails()) {
