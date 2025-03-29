@@ -44,26 +44,5 @@ class Category extends Model
         return $query->orderBy('order')->orderBy('name');
     }
 
-    public function getTranslation(string $field, string $locale, bool $useFallbackLocale = true)
-    {
-        $translations = $this->getAttribute($field);
-        $locale = $this->normalizeLocale($locale, $field, $useFallbackLocale);
-
-        return $translations[$locale] ?? $translations[config('app.fallback_locale')] ?? null;
-    }
-
-    protected function normalizeLocale(string $locale, string $field, bool $useFallbackLocale): string
-    {
-        $locales = config('laravellocalization.supportedLocales', []);
-        
-        if (isset($locales[$locale])) {
-            return $locale;
-        }
-
-        if (!$useFallbackLocale) {
-            return $locale;
-        }
-
-        return config('app.fallback_locale', 'en');
-    }
+    
 }

@@ -88,12 +88,6 @@ class CategoryController extends Controller
 
     public function update(Request $request, $id)
     {
-        $category = Category::find($id);
-
-        if (!$category) {
-            return $this->error('Category not found', 404);
-        }
-
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|array',
             'name.en' => 'sometimes|string|max:255',
@@ -103,7 +97,7 @@ class CategoryController extends Controller
             'description.ar' => 'sometimes|string',
             'icon' => 'sometimes|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
             'order' => 'sometimes|integer|min:0',
-            'is_active' => 'sometimes|boolean'
+            'is_active' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -111,25 +105,45 @@ class CategoryController extends Controller
         }
 
         try {
-            $updateData = [
-                'name' => [
+            $category = Category::find($id);
+            
+            if (!$category) {
+                return $this->error('Category not found', 404);
+            }
+
+            $updateData = [];
+
+            if ($request->has('name')) {
+                $updateData['name'] = [
                     'en' => $request->input('name.en', $category->name['en']),
                     'ar' => $request->input('name.ar', $category->name['ar'])
-                ],
-                'description' => [
-                    'en' => $request->input('description.en', $category->description['en']),
-                    'ar' => $request->input('description.ar', $category->description['ar'])
-                ],
-                'order' => $request->input('order', $category->order),
-                'is_active' => $request->input('is_active', $category->is_active)
-            ];
+                ];
+            }
+
+            if ($request->has('description')) {
+                $updateData['description'] = [
+                    'en' => $request->input('description.en', $category->description['en'] ?? ''),
+                    'ar' => $request->input('description.ar', $category->description['ar'] ?? '')
+                ];
+            }
 
             if ($request->hasFile('icon')) {
-                $oldIconPath = str_replace('/storage', 'public', $category->icon);
-                Storage::delete($oldIconPath);
-
+                // Delete old icon if exists
+                if ($category->icon) {
+                    $oldIconPath = str_replace('/storage', 'public', $category->icon);
+                    Storage::delete($oldIconPath);
+                }
+                
                 $iconPath = $request->file('icon')->store('public/category_icons');
                 $updateData['icon'] = Storage::url($iconPath);
+            }
+
+            if ($request->has('order')) {
+                $updateData['order'] = $request->order;
+            }
+
+            if ($request->has('is_active')) {
+                $updateData['is_active'] = $request->is_active;
             }
 
             $category->update($updateData);
