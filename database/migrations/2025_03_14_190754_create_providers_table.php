@@ -15,6 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->enum('provider_type', ['individual', 'organizational']);
+            // add nid (national ID coloumn for individual providers), unique and nullable
+            $table->string('nid')->unique()->nullable();
             $table->timestamps();
         });
     }

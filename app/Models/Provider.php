@@ -10,7 +10,7 @@ class Provider extends Model
 {
     use LogsActivity;
 
-    protected $fillable = ['user_id', 'provider_type'];
+    protected $fillable = ['user_id', 'provider_type', 'nid'];
 
     // Define which attributes should be logged
     protected static $logAttributes = ['user_id', 'provider_type'];

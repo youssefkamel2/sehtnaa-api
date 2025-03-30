@@ -31,11 +31,15 @@ class AuthController extends Controller
             'password' => 'required|string|min:6|confirmed',
             'user_type' => 'required|in:customer,provider',
             'address' => 'required_if:user_type,customer,provider|string',
+            'gender' => 'required|in:male,female',
             'provider_type' => 'required_if:user_type,provider|in:individual,organizational',
+            'nid' => 'required_if:provider_type,individual|string|unique:providers,nid',
+        ], [
+            'nid.required_if' => 'The national ID is required for individual providers',
+            'nid.unique' => 'This national ID is already registered',
         ]);
 
         if ($validator->fails()) {
-            // Log validation failure
             activity()
                 ->withProperties(['errors' => $validator->errors()])
                 ->log('Validation failed during registration.');
@@ -54,6 +58,7 @@ class AuthController extends Controller
                 'user_type' => $request->user_type,
                 'status' => $request->user_type === 'provider' ? 'pending' : 'active',
                 'address' => $request->address,
+                'gender' => $request->gender,
             ]);
 
             if ($request->user_type === 'customer') {
@@ -61,10 +66,9 @@ class AuthController extends Controller
                 $token = JWTAuth::fromUser($user);
                 DB::commit();
 
-                // Log successful customer registration
                 activity()
-                    ->performedOn($user) // Set the subject (the user being registered)
-                    ->causedBy($user) // Set the causer (the user performing the action)
+                    ->performedOn($user)
+                    ->causedBy($user)
                     ->withProperties(['user_id' => $user->id, 'email' => $user->email])
                     ->log('Customer registered successfully.');
 
@@ -73,16 +77,27 @@ class AuthController extends Controller
                     'token' => $token,
                 ], 'Customer registered successfully', 201);
             } elseif ($request->user_type === 'provider') {
-                $user->provider()->create([
+                $providerData = [
                     'provider_type' => $request->provider_type,
-                ]);
+                ];
+
+                // Add NID only for individual providers
+                if ($request->provider_type === 'individual') {
+                    $providerData['nid'] = $request->nid;
+                }
+
+                $user->provider()->create($providerData);
                 DB::commit();
 
-                // Log successful provider registration
                 activity()
-                    ->performedOn($user) // Set the subject (the user being registered)
-                    ->causedBy($user) // Set the causer (the user performing the action)
-                    ->withProperties(['user_id' => $user->id, 'email' => $user->email])
+                    ->performedOn($user)
+                    ->causedBy($user)
+                    ->withProperties([
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'provider_type' => $request->provider_type,
+                        'nid' => $request->provider_type === 'individual' ? 'provided' : 'not applicable'
+                    ])
                     ->log('Provider registered successfully.');
 
                 return $this->success([
@@ -91,20 +106,16 @@ class AuthController extends Controller
             }
         } catch (\Exception $e) {
             DB::rollBack();
-
-            // Log registration failure
             activity()
                 ->withProperties(['error' => $e->getMessage()])
                 ->log('Registration failed.');
-
             return $this->error('Registration failed. Please try again.', 500);
         }
     }
 
-    // Login
+    // Login remains the same as before
     public function login(Request $request)
     {
-        // Validate the request
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
             'password' => 'required|string',
@@ -112,14 +123,12 @@ class AuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            // Log validation failure
             activity()
                 ->withProperties(['errors' => $validator->errors()])
                 ->log('Validation failed during login.');
             return $this->error($validator->errors()->first(), 422);
         }
 
-        // Attempt to authenticate the user
         $credentials = $request->only('email', 'password');
         if (!$token = JWTAuth::attempt($credentials)) {
             activity()
@@ -128,10 +137,8 @@ class AuthController extends Controller
             return $this->error('The provided email or password is incorrect.', 401);
         }
 
-        // Get the authenticated user
         $user = auth()->user();
 
-        // Check if the user_type matches the requested user_type
         if ($user->user_type !== $request->user_type) {
             activity()
                 ->withProperties(['email' => $request->email, 'user_type' => $request->user_type])
@@ -139,17 +146,11 @@ class AuthController extends Controller
             return $this->error('You are not authorized to access this account type.', 422);
         }
 
-        // Handle provider-specific checks
         if ($user->user_type === 'provider') {
             $provider = $user->provider;
-
-            // Get the required documents for the provider's type
             $requiredDocuments = RequiredDocument::where('provider_type', $provider->provider_type)->get();
-
-            // Get the provider's uploaded documents
             $uploadedDocuments = $provider->documents;
 
-            // Check if all required documents are uploaded and approved
             $missingDocuments = [];
             $pendingDocuments = [];
             $rejectedDocuments = [];
@@ -166,9 +167,7 @@ class AuthController extends Controller
                 }
             }
 
-            // If any documents are missing, pending, or rejected, return an error
             if (!empty($missingDocuments) || !empty($pendingDocuments) || !empty($rejectedDocuments)) {
-                // Log provider account under review
                 activity()
                     ->causedBy($user)
                     ->withProperties([
@@ -187,9 +186,7 @@ class AuthController extends Controller
                 ], 403);
             }
 
-            // Check if the user is pending
             if ($user->status === 'pending') {
-                // Log provider account pending
                 activity()
                     ->causedBy($user)
                     ->withProperties(['user_id' => $user->id])
@@ -199,9 +196,7 @@ class AuthController extends Controller
             }
         }
 
-        // Check if the user is de-active
         if ($user->status === 'de-active') {
-            // Log deactivated account login attempt
             activity()
                 ->causedBy($user)
                 ->withProperties(['user_id' => $user->id])
@@ -210,7 +205,6 @@ class AuthController extends Controller
             return $this->error('Your account is deactivated', 403);
         }
 
-        // Log successful login
         activity()
             ->causedBy($user)
             ->withProperties(['user_id' => $user->id, 'user_type' => $user->user_type])
@@ -221,14 +215,14 @@ class AuthController extends Controller
             'token' => $token,
         ], 'Login successful');
     }
-    // Logout
+
+    // Logout remains the same
     public function logout()
     {
         try {
             $user = JWTAuth::parseToken()->authenticate();
             $token = JWTAuth::getToken();
             if (!$token) {
-                // Log no token found during logout
                 activity()
                     ->log('No token found during logout.');
                 return $this->error('No token found.', 401);
@@ -236,16 +230,13 @@ class AuthController extends Controller
 
             JWTAuth::invalidate($token);
 
-            // Log successful logout
             activity()
-                // ->performedOn($user)
                 ->causedBy(auth()->user())
                 ->withProperties(['user_id' => auth()->id()])
                 ->log('User logged out successfully.');
 
             return $this->success(null, 'Successfully logged out.');
         } catch (\Exception $e) {
-            // Log logout failure
             activity()
                 ->withProperties(['error' => $e->getMessage()])
                 ->log('Logout failed.');
@@ -254,22 +245,25 @@ class AuthController extends Controller
         }
     }
 
-    // Get authenticated user
+    // Get authenticated user - updated to include provider details
     public function me()
     {
         try {
             $user = JWTAuth::parseToken()->authenticate();
             if (!$user) {
-                // Log unauthorized access to /me endpoint
                 activity()
                     ->log('Unauthorized access to /me endpoint.');
                 return $this->error('Unauthorized access. Please log in.', 401);
             }
 
-            // Eager load provider and customer data
-            $user->load('provider', 'customer');
+            // Load provider with documents and customer data
+            $user->load([
+                'provider' => function($query) {
+                    $query->with('documents');
+                },
+                'customer'
+            ]);
 
-            // Log user details retrieved
             activity()
                 ->performedOn($user)
                 ->causedBy($user)
@@ -278,7 +272,6 @@ class AuthController extends Controller
 
             return $this->success($user, 'User retrieved successfully');
         } catch (\Exception $e) {
-            // Log error retrieving user details
             activity()
                 ->withProperties(['error' => $e->getMessage()])
                 ->log('Error retrieving user details.');

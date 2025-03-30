@@ -21,6 +21,7 @@ return new class extends Migration
             $table->enum('user_type', ['customer', 'admin', 'provider']);
             $table->enum('status', ['pending', 'active', 'de-active'])->default('pending');
             $table->text('address')->nullable();
+            $table->enum('gender', ['male', 'female']);
             $table->decimal('latitude', 10, 8)->nullable();
             $table->decimal('longitude', 11, 8)->nullable();
             $table->string('fcm_token')->nullable();
