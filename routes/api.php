@@ -47,6 +47,8 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
     Route::post('/update-location', [UserController::class, 'updateLocation']);
     Route::post('/update-fcm-token', [UserController::class, 'updateFcmToken']);
     Route::post('/update-language', [UserController::class, 'updateLanguage']);
+    Route::post('/update-profile-image', [UserController::class, 'updateProfileImage']);
+    Route::post('/update-password', [UserController::class, 'changePassword']);
 
 });
 

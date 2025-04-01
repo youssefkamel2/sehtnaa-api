@@ -15,7 +15,7 @@ class UserController extends Controller
 {
     use ResponseTrait;
 
-    // Update profile
+    // Update profile without image
     public function updateProfile(Request $request)
     {
         $user = $request->user();
@@ -26,7 +26,6 @@ class UserController extends Controller
             // 'email' => 'sometimes|email|unique:users,email,'.$user->id,
             'phone' => 'sometimes|string|unique:users,phone,'.$user->id,
             'address' => 'sometimes|string',
-            'profile_image' => 'sometimes|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -35,19 +34,38 @@ class UserController extends Controller
 
         $data = $request->only(['first_name', 'last_name', 'email', 'phone', 'address']);
 
-        if ($request->hasFile('profile_image')) {
-            // Delete old image if exists
-            if ($user->profile_image) {
-                Storage::delete($user->profile_image);
-            }
-            $path = $request->file('profile_image')->store('profile_images', 'public');
-            $data['profile_image'] = $path;
-        }
-
         $user->update($data);
 
         return $this->success($user, 'Profile updated');
     }
+
+    // update profile image
+    public function updateProfileImage(Request $request)
+    {
+        $user = $request->user();
+
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 400);
+        }
+
+        // Delete old image if exists
+        if ($user->image) {
+            Storage::disk('public')->delete($user->image);
+        }
+
+        // Store new image
+        $path = $request->file('image')->store('profile_images', 'public');
+
+        // Update user profile image
+        $user->update(['profile_image' => $path]);
+
+        return $this->success($user, 'Profile image updated');
+    }
+
 
     // Update location
     public function updateLocation(Request $request)
@@ -87,6 +105,29 @@ class UserController extends Controller
         ]);
 
         return $this->success(null, 'FCM token updated');
+    }
+
+    // change password
+    public function changePassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'old_password' => 'required|string',
+            'new_password' => 'required|string|min:6|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 400);
+        }
+
+        $user = $request->user();
+
+        if (!Hash::check($request->old_password, $user->password)) {
+            return $this->error('Old password is incorrect', 400);
+        }
+
+        $user->update(['password' => Hash::make($request->new_password)]);
+
+        return $this->success(null, 'Password changed successfully');
     }
     
 }
