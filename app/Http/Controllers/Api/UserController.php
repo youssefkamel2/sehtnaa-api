@@ -125,6 +125,11 @@ class UserController extends Controller
             return $this->error('Old password is incorrect', 400);
         }
 
+        // Check if the new password is the same as the old password
+        if (Hash::check($request->new_password, $user->password)) {
+            return $this->error('New password cannot be the same as the old password', 400);
+        }
+
         $user->update(['password' => Hash::make($request->new_password)]);
 
         return $this->success(null, 'Password changed successfully');
