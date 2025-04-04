@@ -33,7 +33,7 @@ class UserController extends Controller
             return $this->error($validator->errors()->first(), 400);
         }
 
-        $data = $request->only(['first_name', 'last_name', 'email', 'phone', 'address']);
+        $data = $request->only(['first_name', 'last_name', 'email', 'phone', 'address', 'gender']);
 
         $user->update($data);
 

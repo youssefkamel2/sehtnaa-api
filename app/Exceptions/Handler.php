@@ -57,16 +57,16 @@ class Handler extends ExceptionHandler
     protected function unauthenticated($request, AuthenticationException $exception)
     {
         activity()
-    ->withProperties([
-        'ip' => $request->ip(),
-        'user_agent' => $request->userAgent(),
-        'attempted_route' => $request->path(),
-        'auth_header' => $request->header('Authorization'),
-        'other_headers' => collect($request->headers->all())
-            ->except([ 'cookie'])
-            ->toArray(),
-    ])
-    ->log('Unauthorized API access attempt');
+            ->withProperties([
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'attempted_route' => $request->path(),
+                'auth_header' => $request->header('Authorization'),
+                'other_headers' => collect($request->headers->all())
+                    ->except(['cookie'])
+                    ->toArray(),
+            ])
+            ->log('Unauthorized API access attempt');
         return $this->error('Unauthorized access. Please log in.', 401);
     }
 
