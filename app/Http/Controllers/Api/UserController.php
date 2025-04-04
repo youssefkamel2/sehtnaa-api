@@ -26,6 +26,7 @@ class UserController extends Controller
             // 'email' => 'sometimes|email|unique:users,email,'.$user->id,
             'phone' => 'sometimes|string|unique:users,phone,'.$user->id,
             'address' => 'sometimes|string',
+            'gender' => 'sometimes|in:male,female'
         ]);
 
         if ($validator->fails()) {
@@ -65,7 +66,6 @@ class UserController extends Controller
 
         return $this->success($user, 'Profile image updated');
     }
-
 
     // Update location
     public function updateLocation(Request $request)

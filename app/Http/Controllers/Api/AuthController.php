@@ -33,10 +33,22 @@ class AuthController extends Controller
             'address' => 'required_if:user_type,customer,provider|string',
             'gender' => 'required|in:male,female',
             'provider_type' => 'required_if:user_type,provider|in:individual,organizational',
-            'nid' => 'required_if:provider_type,individual|string|unique:providers,nid',
+            'nid' => [
+                'required_if:provider_type,individual',
+                'string',
+                'unique:providers,nid',
+                'digits:14',
+                function ($attribute, $value, $fail) {
+                    // Validate Egyptian NID format
+                    if (!preg_match('/^[23]\d{13}$/', $value)) {
+                        $fail('The national ID must be a valid 14-digit Egyptian ID starting with 2 or 3.');
+                    }
+                },
+            ],
         ], [
             'nid.required_if' => 'The national ID is required for individual providers',
             'nid.unique' => 'This national ID is already registered',
+            'nid.digits' => 'The national ID must be exactly 14 digits',
         ]);
 
         if ($validator->fails()) {
@@ -49,6 +61,16 @@ class AuthController extends Controller
         DB::beginTransaction();
 
         try {
+            // Calculate birth date from NID if provider is individual
+            $birthDate = null;
+            if ($request->user_type === 'provider' && $request->provider_type === 'individual') {
+                $birthDate = $this->extractBirthDateFromNid($request->nid);
+
+                if (!$birthDate) {
+                    throw new \Exception('Invalid national ID format for birth date extraction');
+                }
+            }
+
             $user = User::create([
                 'first_name' => $request->first_name,
                 'last_name' => $request->last_name,
@@ -59,6 +81,7 @@ class AuthController extends Controller
                 'status' => $request->user_type === 'provider' ? 'pending' : 'active',
                 'address' => $request->address,
                 'gender' => $request->gender,
+                'birth_date' => $birthDate, // Add the calculated birth date
             ]);
 
             if ($request->user_type === 'customer') {
@@ -81,7 +104,6 @@ class AuthController extends Controller
                     'provider_type' => $request->provider_type,
                 ];
 
-                // Add NID only for individual providers
                 if ($request->provider_type === 'individual') {
                     $providerData['nid'] = $request->nid;
                 }
@@ -96,7 +118,8 @@ class AuthController extends Controller
                         'user_id' => $user->id,
                         'email' => $user->email,
                         'provider_type' => $request->provider_type,
-                        'nid' => $request->provider_type === 'individual' ? 'provided' : 'not applicable'
+                        'nid' => $request->provider_type === 'individual' ? 'provided' : 'not applicable',
+                        'birth_date' => $birthDate,
                     ])
                     ->log('Provider registered successfully.');
 
@@ -258,7 +281,7 @@ class AuthController extends Controller
 
             // Load provider with documents and customer data
             $user->load([
-                'provider' => function($query) {
+                'provider' => function ($query) {
                     $query->with('documents');
                 },
                 'customer'
@@ -278,5 +301,31 @@ class AuthController extends Controller
 
             return $this->error('An error occurred.', 500);
         }
+    }
+
+    /**
+     * Extract birth date from Egyptian National ID
+     * 
+     * @param string $nid 14-digit Egyptian National ID
+     * @return string|null Formatted date (Y-m-d) or null if invalid
+     */
+    private function extractBirthDateFromNid($nid)
+    {
+        // First digit represents century (2 for 1900s, 3 for 2000s)
+        $centuryDigit = substr($nid, 0, 1);
+        $yearDigits = substr($nid, 1, 2);
+        $monthDigits = substr($nid, 3, 2);
+        $dayDigits = substr($nid, 5, 2);
+
+        // Determine full year based on century digit
+        $fullYear = ($centuryDigit == '2') ? '19' . $yearDigits : '20' . $yearDigits;
+
+        // Validate the date components
+        if (!checkdate($monthDigits, $dayDigits, $fullYear)) {
+            return null;
+        }
+
+        // Format as Y-m-d for database storage
+        return sprintf('%s-%s-%s', $fullYear, $monthDigits, $dayDigits);
     }
 }
