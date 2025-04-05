@@ -47,8 +47,8 @@ class CategoryController extends Controller
         }
 
         try {
-            $iconPath = $request->file('icon')->store('public/category_icons');
-            $iconUrl = Storage::url($iconPath);
+            $iconPath = $request->file('image')->store('category_icons', 'public');;
+            // $iconUrl = Storage::url($iconPath);
 
             $category = Category::create([
                 'name' => [
@@ -59,7 +59,7 @@ class CategoryController extends Controller
                     'en' => $request->input('description.en', ''),
                     'ar' => $request->input('description.ar', '')
                 ],
-                'icon' => $iconUrl,
+                'icon' => $iconPath,
                 'order' => $request->order ?? 0,
                 'added_by' => auth()->id(),
                 'is_active' => true
@@ -134,8 +134,8 @@ class CategoryController extends Controller
                     Storage::delete($oldIconPath);
                 }
                 
-                $iconPath = $request->file('icon')->store('public/category_icons');
-                $updateData['icon'] = Storage::url($iconPath);
+                $iconPath = $request->file('image')->store('category_icons', 'public');;
+                $updateData['icon'] = $iconPath;
             }
 
             if ($request->has('order')) {
