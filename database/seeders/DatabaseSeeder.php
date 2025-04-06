@@ -19,7 +19,10 @@ class DatabaseSeeder extends Seeder
         //     'email' => 'test@example.com',
         // ]);
         self::call([
-            SuperAdminSeeder::class,
+            UsersTableSeeder::class,
+            CategoriesTableSeeder::class,
+            ServicesTableSeeder::class,
+            RequestsTableSeeder::class,
         ]);
     }
 }

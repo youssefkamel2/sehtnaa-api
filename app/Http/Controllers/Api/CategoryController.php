@@ -47,7 +47,7 @@ class CategoryController extends Controller
         }
 
         try {
-            $iconPath = $request->file('image')->store('category_icons', 'public');;
+            $iconPath = $request->file('icon')->store('category_icons', 'public');;
             // $iconUrl = Storage::url($iconPath);
 
             $category = Category::create([
@@ -134,7 +134,7 @@ class CategoryController extends Controller
                     Storage::delete($oldIconPath);
                 }
                 
-                $iconPath = $request->file('image')->store('category_icons', 'public');;
+                $iconPath = $request->file('icon')->store('category_icons', 'public');;
                 $updateData['icon'] = $iconPath;
             }
 

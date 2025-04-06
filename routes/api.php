@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProviderController;
+use App\Http\Controllers\Api\RequestController;
 use App\Http\Controllers\Api\ResetPasswordController;
 use App\Http\Controllers\Api\TestNotificationController;
 
@@ -62,6 +63,12 @@ Route::prefix('categories')->group(function () {
     Route::post('/{id}/toggle-status', [CategoryController::class, 'toggleStatus'])->middleware(['auth:api', 'role:admin']);
 });
 
+// requests
+Route::prefix('requests')->middleware(['auth:api'])->group(function () {
+    Route::get('/', [RequestController::class, 'getUserRequests']);
+    Route::get('/{id}', [RequestController::class, 'getRequestDetails']);
+
+});
 
 
 

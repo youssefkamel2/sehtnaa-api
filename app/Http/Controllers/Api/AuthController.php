@@ -34,7 +34,7 @@ class AuthController extends Controller
             'gender' => 'required|in:male,female',
             'provider_type' => 'required_if:user_type,provider|in:individual,organizational',
             // profile image required for individual providers
-            'profile_image' => 'required_if:user_type,provider,individual|image|mimes:jpeg,png,jpg,gif|max:2048',
+            // 'profile_image' => 'required_if:user_type,provider,individual|image|mimes:jpeg,png,jpg,gif|max:2048',
             // NID required for individual providers
             'nid' => [
                 'required_if:provider_type,individual',
