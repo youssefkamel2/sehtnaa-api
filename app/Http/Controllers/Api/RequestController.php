@@ -18,36 +18,47 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-            print_r($user->customer->id);die;
+            
+            // For customers, get their customer ID first
+            $customerId = $user->user_type === 'customer' ? $user->customer->id : null;
+            
+            // For providers, get their provider ID
+            $providerId = $user->user_type === 'provider' ? $user->provider->id : null;
+
             $requests = ServiceRequest::with([
-                'service:id,name,price',
-                'assignedProvider.user:id,first_name,last_name,phone,profile_image',
-                'assignedProvider:id,provider_type,user_id'
-            ])
-            ->where('customer_id', $user->id)
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($request) {
-                return [
-                    'id' => $request->id,
-                    'customer_id' => $request->customer_id,
-                    'service_id' => $request->service_id,
-                    'phone' => $request->phone,
-                    'address' => $request->address,
-                    'status' => $request->status,
-                    'service' => [
-                        'name' => $request->service->name,
-                        'price' => $request->service->price
-                    ],
-                    'assigned_provider' => $request->assignedProvider ? [
-                        'first_name' => $request->assignedProvider->user->first_name,
-                        'last_name' => $request->assignedProvider->user->last_name,
-                        'provider_type' => $request->assignedProvider->provider_type,
-                        'phone' => $request->assignedProvider->user->phone,
-                        'profile_image' => $request->assignedProvider->user->profile_image
-                    ] : null
-                ];
-            });
+                    'service:id,name,price',
+                    'assignedProvider.user:id,first_name,last_name,phone,profile_image',
+                    'assignedProvider:id,provider_type,user_id'
+                ])
+                ->when($user->user_type === 'customer', function($query) use ($customerId) {
+                    return $query->where('customer_id', $customerId);
+                })
+                ->when($user->user_type === 'provider', function($query) use ($providerId) {
+                    return $query->where('assigned_provider_id', $providerId);
+                })
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($request) {
+                    return [
+                        'id' => $request->id,
+                        'customer_id' => $request->customer_id,
+                        'service_id' => $request->service_id,
+                        'phone' => $request->phone,
+                        'address' => $request->address,
+                        'status' => $request->status,
+                        'service' => [
+                            'name' => $request->service->name,
+                            'price' => $request->service->price
+                        ],
+                        'assigned_provider' => $request->assignedProvider ? [
+                            'first_name' => $request->assignedProvider->user->first_name,
+                            'last_name' => $request->assignedProvider->user->last_name,
+                            'provider_type' => $request->assignedProvider->provider_type,
+                            'phone' => $request->assignedProvider->user->phone,
+                            'profile_image' => $request->assignedProvider->user->profile_image
+                        ] : null
+                    ];
+                });
 
             return $this->success($requests, 'Requests fetched successfully');
         } catch (\Exception $e) {
@@ -73,11 +84,19 @@ class RequestController extends Controller
 
             // Authorization check
             $user = Auth::user();
-            if ($user->user_type === 'customer' && $request->customer_id !== $user->id) {
-                return $this->error('Unauthorized', 403);
+            
+            if ($user->user_type === 'customer') {
+                // Get the customer ID through the relationship
+                if (!$user->customer || $request->customer_id !== $user->customer->id) {
+                    return $this->error('Unauthorized', 403);
+                }
             }
-            if ($user->user_type === 'provider' && $request->assigned_provider_id !== $user->provider->id) {
-                return $this->error('Unauthorized', 403);
+            
+            if ($user->user_type === 'provider') {
+                // Get the provider ID through the relationship
+                if (!$user->provider || $request->assigned_provider_id !== $user->provider->id) {
+                    return $this->error('Unauthorized', 403);
+                }
             }
 
             $formattedRequest = [
