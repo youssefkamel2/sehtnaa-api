@@ -18,7 +18,7 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-            
+            print_r($user);die;
             $requests = ServiceRequest::with([
                 'service:id,name,price',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
