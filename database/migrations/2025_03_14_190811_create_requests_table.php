@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up()
     {
         Schema::create('requests', function (Blueprint $table) {
@@ -20,19 +17,16 @@ return new class extends Migration
             $table->decimal('latitude', 10, 8)->nullable();
             $table->decimal('longitude', 11, 8)->nullable();
             $table->text('additional_info')->nullable();
-            $table->enum('status', ['pending', 'accepted', 'completed', 'cancelled'])->default('pending');
+            $table->enum('status', ['pending', 'accepted', 'in_progress', 'completed', 'cancelled'])->default('pending');
             $table->foreignId('assigned_provider_id')->nullable()->constrained('providers')->onDelete('set null');
             $table->timestamp('scheduled_at')->nullable();
+            $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
-            $table->timestamp('cancelled_at')->nullable();
-            $table->text('cancellation_reason')->nullable();
             $table->timestamps();
+            
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('requests');

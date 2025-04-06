@@ -4,41 +4,73 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Request extends Model
 {
     protected $fillable = [
         'customer_id', 'service_id', 'phone', 'address', 'latitude', 'longitude',
         'additional_info', 'status', 'assigned_provider_id', 'scheduled_at',
-        'completed_at', 'cancelled_at', 'cancellation_reason'
+        'started_at', 'completed_at'
     ];
 
     protected $casts = [
         'scheduled_at' => 'datetime',
+        'started_at' => 'datetime',
         'completed_at' => 'datetime',
-        'cancelled_at' => 'datetime',
     ];
 
-    public function customer()
+    public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->with('user');
     }
 
-    public function service()
+    public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class)->with('category');
     }
 
-    public function assignedProvider()
+    public function assignedProvider(): BelongsTo
     {
         return $this->belongsTo(Provider::class, 'assigned_provider_id')->with('user');
     }
 
-    // Accessor for status
+    public function cancellations(): HasMany
+    {
+        return $this->hasMany(RequestCancellationLog::class);
+    }
+
+    public function feedbacks(): HasMany
+    {
+        return $this->hasMany(RequestFeedback::class);
+    }
+
+    public function complaints(): HasMany
+    {
+        return $this->hasMany(Complaint::class);
+    }
+    public function isCancellable(): bool
+    {
+        // Get raw status value bypassing the accessor
+        $status = strtolower($this->getRawOriginal('status'));
+        
+        // Request can be cancelled if it's pending or within 15 minutes of acceptance
+        if ($status === 'pending') {
+            return true;
+        }
+    
+        if ($status === 'accepted' && $this->started_at) {
+            return now()->diffInMinutes($this->started_at) <= 15;
+        }
+    
+        return false;
+    }
+
     protected function status(): Attribute
     {
         return Attribute::make(
-            get: fn (string $value) => ucfirst($value),
+            get: fn (string $value) => ucfirst(str_replace('_', ' ', $value)),
         );
     }
 }

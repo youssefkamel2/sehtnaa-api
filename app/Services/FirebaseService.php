@@ -13,12 +13,15 @@ class FirebaseService
     public function sendToDevice(string $deviceToken, string $title, string $body, array $data = [])
     {
         try {
+            if (empty($deviceToken)) {
+                Log::warning('Attempted to send notification to empty device token');
+                return false;
+            }
+
             Log::info('Sending notification to device', ['token' => $deviceToken]);
 
-            // Get the full path to the credentials file
             $credentialsPath = Storage::path(env('FIREBASE_CREDENTIALS'));
             
-            // Verify the file exists
             if (!file_exists($credentialsPath)) {
                 throw new \Exception("Firebase credentials file not found at: {$credentialsPath}");
             }
@@ -28,20 +31,23 @@ class FirebaseService
 
             $message = CloudMessage::withTarget('token', $deviceToken)
                 ->withNotification(Notification::create($title, $body))
-                ->withData($data);
+                ->withData(array_merge([
+                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                    'sound' => 'default'
+                ], $data));
 
             $response = $messaging->send($message);
 
             Log::info('Notification sent successfully', ['response' => $response]);
 
-            return $response;
+            return true;
         } catch (\Exception $e) {
             Log::error('Failed to send notification', [
                 'error' => $e->getMessage(),
                 'token' => $deviceToken,
                 'trace' => $e->getTraceAsString()
             ]);
-            throw $e;
+            return false;
         }
     }
 }

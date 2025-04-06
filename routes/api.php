@@ -5,10 +5,11 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\RequestController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProviderController;
-use App\Http\Controllers\Api\RequestController;
 use App\Http\Controllers\Api\ResetPasswordController;
+use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\TestNotificationController;
 
 Route::prefix('auth')->group(function () {
@@ -39,6 +40,11 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     Route::post('/approve-document', [AdminController::class, 'approveDocument']);
     Route::post('/reject-document', [AdminController::class, 'rejectDocument']);
     Route::post('/add-document', [AdminController::class, 'addRequiredDocument']);
+    Route::prefix('complaints')->group(function () {
+        Route::get('/', [ComplaintController::class, 'index']);
+        Route::get('/{id}', [ComplaintController::class, 'show']);
+        Route::put('/{id}/status', [ComplaintController::class, 'updateStatus']);
+    }); 
 });
 
 
@@ -67,7 +73,9 @@ Route::prefix('categories')->group(function () {
 Route::prefix('requests')->middleware(['auth:api'])->group(function () {
     Route::get('/', [RequestController::class, 'getUserRequests']);
     Route::get('/{id}', [RequestController::class, 'getRequestDetails']);
-
+    Route::post('/{id}/cancel', [RequestController::class, 'cancelRequest']);
+    Route::post('/{id}/feedback', [RequestController::class, 'submitFeedback']);
+    Route::post('/{id}/complaint', [RequestController::class, 'createComplaint']);
 });
 
 

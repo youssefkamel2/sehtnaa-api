@@ -48,7 +48,6 @@ class RequestsTableSeeder extends Seeder
                 'address' => '321 Desert Rd, Aswan, Egypt',
                 'status' => 'cancelled',
                 'additional_info' => 'No longer needed',
-                'cancellation_reason' => 'Patient recovered'
             ],
             [
                 'phone' => '444555666',
