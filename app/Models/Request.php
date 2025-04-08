@@ -70,7 +70,7 @@ class Request extends Model
     protected function status(): Attribute
     {
         return Attribute::make(
-            get: fn (string $value) => ucfirst(str_replace('_', ' ', $value)),
+            get: fn (string $value) => str_replace('_', ' ', $value),
         );
     }
 }
