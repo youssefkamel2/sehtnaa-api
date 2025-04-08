@@ -114,6 +114,8 @@ class RequestController extends Controller
             if ($serviceRequest->customer_id !== $user->customer->id) {
                 return $this->error('You can only submit feedback for your own requests', 403);
             }
+            
+            echo $serviceRequest->status;die;
     
             // Check if request is completed
             if ($serviceRequest->status !== 'completed') {
@@ -330,8 +332,6 @@ class RequestController extends Controller
                 'phone' => $request->assignedProvider->user->phone,
                 'profile_image' => $request->assignedProvider->user->profile_image
             ] : null,
-            'has_feedback' => $request->feedbacks->isNotEmpty(),
-            'has_cancellations' => $request->cancellations->isNotEmpty(),
         ];
     }
 
