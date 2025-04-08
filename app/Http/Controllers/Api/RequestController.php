@@ -115,8 +115,7 @@ class RequestController extends Controller
                 return $this->error('You can only submit feedback for your own requests', 403);
             }
             
-            echo $serviceRequest->status;die;
-    
+            
             // Check if request is completed
             if ($serviceRequest->status !== 'completed') {
                 return $this->error('Feedback can only be submitted for completed requests', 400);
