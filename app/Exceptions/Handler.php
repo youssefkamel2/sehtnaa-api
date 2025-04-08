@@ -72,6 +72,12 @@ class Handler extends ExceptionHandler
 
     public function render($request, Throwable $exception) // Change Exception to Throwable
     {
+
+        // Check if the request expects a JSON response
+        if ($request->expectsJson()) {
+            // Handle the exception and return a JSON response
+            return $this->handleApiException($request, $exception);
+        }
         // Default response for unexpected exceptions
         $response = [
             'success' => false,
@@ -100,4 +106,16 @@ class Handler extends ExceptionHandler
         // If it's a generic server error, respond with 500
         return $this->error($response['message'], 500);
     }
+
+    protected function handleApiException($request, Throwable $exception)
+    {
+        // Handle the exception and return a JSON response
+        return response()->json([
+            'success' => false,
+            'message' => $exception->getMessage(),
+            'code' => $exception->getCode() ?: 500,
+        ], $exception->getCode() ?: 500);
+    }
+
+    
 }
