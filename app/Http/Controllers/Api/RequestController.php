@@ -319,7 +319,6 @@ class RequestController extends Controller
             'phone' => $request->phone,
             'address' => $request->address,
             'status' => $request->status,
-            'is_cancellable' => $request->isCancellable(),
             'service' => [
                 'name' => $request->service->name,
                 'price' => $request->service->price
