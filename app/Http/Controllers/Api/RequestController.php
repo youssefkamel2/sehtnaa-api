@@ -127,12 +127,13 @@ class RequestController extends Controller
             }
     
             $validator = Validator::make($request->all(), [
-                'rating' => 'required|integer|between:1,5',
+                'rating' => 'required|string|between:1,5',
                 'comment' => 'nullable|string|max:1000',
             ]);
     
+            // return first error only
             if ($validator->fails()) {
-                return $this->error($validator->errors(), 422);
+                return $this->error($validator->errors()->first(), 422);
             }
     
             $feedback = new RequestFeedback([
@@ -194,7 +195,7 @@ class RequestController extends Controller
             ]);
     
             if ($validator->fails()) {
-                return $this->error($validator->errors(), 422);
+                return $this->error($validator->errors()->first(), 422);
             }
     
             $complaint = new Complaint([
@@ -242,7 +243,7 @@ class RequestController extends Controller
             ]);
     
             if ($validator->fails()) {
-                return $this->error($validator->errors(), 422);
+                return $this->error($validator->errors()->first(), 422);
             }
 
             
