@@ -83,7 +83,7 @@ class AuthController extends Controller
                 'user_type' => $request->user_type,
                 'status' => $request->user_type === 'provider' ? 'pending' : 'active',
                 'address' => $request->address,
-                'gender' => $request->gender,
+                'gender' => $request->gender ?? "male",
                 // 'birth_date' => $birthDate, // Add the calculated birth date
             ]);
 
