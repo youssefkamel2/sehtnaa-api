@@ -65,14 +65,14 @@ class AuthController extends Controller
 
         try {
             // Calculate birth date from NID if provider is individual
-            $birthDate = null;
-            if ($request->user_type === 'provider' && $request->provider_type === 'individual') {
-                $birthDate = $this->extractBirthDateFromNid($request->nid);
+            // $birthDate = null;
+            // if ($request->user_type === 'provider' && $request->provider_type === 'individual') {
+            //     $birthDate = $this->extractBirthDateFromNid($request->nid);
 
-                if (!$birthDate) {
-                    throw new \Exception('Invalid national ID format for birth date extraction');
-                }
-            }
+            //     if (!$birthDate) {
+            //         throw new \Exception('Invalid national ID format for birth date extraction');
+            //     }
+            // }
 
             $user = User::create([
                 'first_name' => $request->first_name,
@@ -84,7 +84,7 @@ class AuthController extends Controller
                 'status' => $request->user_type === 'provider' ? 'pending' : 'active',
                 'address' => $request->address,
                 'gender' => $request->gender,
-                'birth_date' => $birthDate, // Add the calculated birth date
+                // 'birth_date' => $birthDate, // Add the calculated birth date
             ]);
 
             if ($request->user_type === 'customer') {
@@ -122,7 +122,7 @@ class AuthController extends Controller
                         'email' => $user->email,
                         'provider_type' => $request->provider_type,
                         'nid' => $request->provider_type === 'individual' ? 'provided' : 'not applicable',
-                        'birth_date' => $birthDate,
+                        // 'birth_date' => $birthDate,
                     ])
                     ->log('Provider registered successfully.');
 
