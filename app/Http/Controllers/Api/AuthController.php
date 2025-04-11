@@ -31,7 +31,7 @@ class AuthController extends Controller
             'password' => 'required|string|min:6|confirmed',
             'user_type' => 'required|in:customer,provider',
             'address' => 'required_if:user_type,customer,provider|string',
-            'gender' => 'required|in:male,female',
+            // 'gender' => 'required|in:male,female',
             'provider_type' => 'required_if:user_type,provider|in:individual,organizational',
             // profile image required for individual providers
             // 'profile_image' => 'required_if:user_type,provider,individual|image|mimes:jpeg,png,jpg,gif|max:2048',
