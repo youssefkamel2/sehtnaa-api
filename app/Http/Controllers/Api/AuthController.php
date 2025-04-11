@@ -23,43 +23,43 @@ class AuthController extends Controller
     // Register a new user
     public function register(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'first_name' => 'required|string',
-            'last_name' => 'required|string',
-            'email' => 'required|email|unique:users',
-            'phone' => 'required|string|unique:users',
-            'password' => 'required|string|min:6|confirmed',
-            'user_type' => 'required|in:customer,provider',
-            'address' => 'required_if:user_type,customer,provider|string',
-            // 'gender' => 'required|in:male,female',
-            'provider_type' => 'required_if:user_type,provider|in:individual,organizational',
-            // profile image required for individual providers
-            // 'profile_image' => 'required_if:user_type,provider,individual|image|mimes:jpeg,png,jpg,gif|max:2048',
-            // NID required for individual providers
-            // 'nid' => [
-            //     'required_if:provider_type,individual',
-            //     'string',
-            //     'unique:providers,nid',
-            //     'digits:14',
-            //     function ($attribute, $value, $fail) {
-            //         // Validate Egyptian NID format
-            //         if (!preg_match('/^[23]\d{13}$/', $value)) {
-            //             $fail('The national ID must be a valid 14-digit Egyptian ID starting with 2 or 3.');
-            //         }
-            //     },
-            // ],
-        ], [
-            'nid.required_if' => 'The national ID is required for individual providers',
-            'nid.unique' => 'This national ID is already registered',
-            'nid.digits' => 'The national ID must be exactly 14 digits',
-        ]);
+        // $validator = Validator::make($request->all(), [
+        //     'first_name' => 'required|string',
+        //     'last_name' => 'required|string',
+        //     'email' => 'required|email|unique:users',
+        //     'phone' => 'required|string|unique:users',
+        //     'password' => 'required|string|min:6|confirmed',
+        //     'user_type' => 'required|in:customer,provider',
+        //     'address' => 'required_if:user_type,customer,provider|string',
+        //     // 'gender' => 'required|in:male,female',
+        //     'provider_type' => 'required_if:user_type,provider|in:individual,organizational',
+        //     // profile image required for individual providers
+        //     // 'profile_image' => 'required_if:user_type,provider,individual|image|mimes:jpeg,png,jpg,gif|max:2048',
+        //     // NID required for individual providers
+        //     'nid' => [
+        //         'required_if:provider_type,individual',
+        //         'string',
+        //         'unique:providers,nid',
+        //         'digits:14',
+        //         function ($attribute, $value, $fail) {
+        //             // Validate Egyptian NID format
+        //             if (!preg_match('/^[23]\d{13}$/', $value)) {
+        //                 $fail('The national ID must be a valid 14-digit Egyptian ID starting with 2 or 3.');
+        //             }
+        //         },
+        //     ],
+        // ], [
+        //     'nid.required_if' => 'The national ID is required for individual providers',
+        //     'nid.unique' => 'This national ID is already registered',
+        //     'nid.digits' => 'The national ID must be exactly 14 digits',
+        // ]);
 
-        if ($validator->fails()) {
-            activity()
-                ->withProperties(['errors' => $validator->errors()])
-                ->log('Validation failed during registration.');
-            return $this->error($validator->errors()->first(), 400);
-        }
+        // if ($validator->fails()) {
+        //     activity()
+        //         ->withProperties(['errors' => $validator->errors()])
+        //         ->log('Validation failed during registration.');
+        //     return $this->error($validator->errors()->first(), 400);
+        // }
 
         DB::beginTransaction();
 
