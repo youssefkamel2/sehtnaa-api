@@ -63,7 +63,7 @@ class AuthController extends Controller
 
         DB::beginTransaction();
 
-        try {
+        // try {
             // Calculate birth date from NID if provider is individual
             // $birthDate = null;
             // if ($request->user_type === 'provider' && $request->provider_type === 'individual') {
@@ -130,13 +130,13 @@ class AuthController extends Controller
                     'user' => $user,
                 ], 'Provider registered successfully. Please upload required documents.', 201);
             }
-        } catch (\Exception $e) {
-            DB::rollBack();
-            activity()
-                ->withProperties(['error' => $e->getMessage()])
-                ->log('Registration failed.');
-            return $this->error('Registration failed. Please try again.', 500);
-        }
+        // } catch (\Exception $e) {
+        //     DB::rollBack();
+        //     activity()
+        //         ->withProperties(['error' => $e->getMessage()])
+        //         ->log('Registration failed.');
+        //     return $this->error('Registration failed. Please try again.', 500);
+        // }
     }
 
     // Login remains the same as before
