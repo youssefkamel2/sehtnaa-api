@@ -76,6 +76,7 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
     Route::post('/{id}/cancel', [RequestController::class, 'cancelRequest']);
     Route::post('/{id}/feedback', [RequestController::class, 'submitFeedback']);
     Route::post('/{id}/complaint', [RequestController::class, 'createComplaint']);
+    Route::get('/{id}/complaints', [RequestController::class, 'getRequestComplaints']);
 });
 
 

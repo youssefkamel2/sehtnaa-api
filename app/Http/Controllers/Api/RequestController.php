@@ -25,8 +25,7 @@ class RequestController extends Controller
         $this->firebaseService = $firebaseService;
     }
 
-    public function getUserRequests()
-    {
+    public function getUserRequests() {
         try {
             $user = Auth::user();
 
@@ -90,6 +89,50 @@ class RequestController extends Controller
         }
     }
 
+    // get request complaints
+    public function getRequestComplaints($id)
+    {
+        try {
+            $request = ServiceRequest::with([
+                'complaints',
+                'assignedProvider.user:id,first_name,last_name,profile_image'
+            ])->find($id);
+
+            if (!$request) {
+                return $this->error('Request not found', 404);
+            }
+
+            $user = Auth::user();
+
+            // Authorization check
+            if ($user->user_type === 'customer' && (!$user->customer || $request->customer_id !== $user->customer->id)) {
+                return $this->error('Unauthorized', 403);
+            }
+
+            if ($user->user_type === 'provider' && (!$user->provider || $request->assigned_provider_id !== $user->provider->id)) {
+                return $this->error('Unauthorized', 403);
+            }
+
+            $complaints = $request->complaints->map(function ($complaint) use ($request) {
+                return [
+                    'subject' => $complaint->subject,
+                    'description' => $complaint->description,
+                    'status' => $complaint->status,
+                    'response' => $complaint->response,
+                    'created_at' => $complaint->created_at,
+                    'provider' => $request->assignedProvider ? [
+                        'name' => $request->assignedProvider->user->first_name . ' ' . $request->assignedProvider->user->last_name,
+                        'profile_image' => $request->assignedProvider->user->profile_image
+                    ] : null
+                ];
+            });
+
+            return $this->success($complaints, 'Complaints fetched successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to fetch complaints: ' . $e->getMessage(), 500);
+        }
+    }
+
     public function submitFeedback(Request $request, $id)
     {
         try {
@@ -114,7 +157,6 @@ class RequestController extends Controller
             if ($serviceRequest->customer_id !== $user->customer->id) {
                 return $this->error('You can only submit feedback for your own requests', 403);
             }
-            
             
             // Check if request is completed
             if ($serviceRequest->status !== 'completed') {
@@ -309,7 +351,6 @@ class RequestController extends Controller
             $this->firebaseService->sendToDevice($token, $title, $body, $data);
         }
     }
-
 
     private function formatRequest(ServiceRequest $request): array
     {
