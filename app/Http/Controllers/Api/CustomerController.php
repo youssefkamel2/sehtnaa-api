@@ -51,7 +51,7 @@ class CustomerController extends Controller
             }
 
             // Toggle the status
-            $customer->user->status = $customer->user->status === 'active' ? 'inactive' : 'active';
+            $customer->user->status = $customer->user->status === 'active' ? 'de-active' : 'active';
             $customer->user->save();
 
             return $this->success([
