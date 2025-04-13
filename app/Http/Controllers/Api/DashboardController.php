@@ -20,15 +20,29 @@ class DashboardController extends Controller
             $data = [
                 'users' => [
                     'count' => Customer::count(),
-                    'recent' => Customer::with('user:id,first_name,last_name,gender,phone_number,email')
-                        ->select('id', 'user_id', 'gender', 'phone_number', 'email')
+                    'recent' => Customer::with(['user' => function($query) {
+                            $query->select('id', 'first_name', 'last_name', 'gender', 'phone', 'email', 'status');
+                        }])
+                        ->select('id', 'user_id')
                         ->latest()
                         ->take(5)
                         ->get()
+                        ->map(function ($customer) {
+                            return [
+                                'first_name' => $customer->user->first_name,
+                                'last_name' => $customer->user->last_name,
+                                'gender' => $customer->user->gender,
+                                'phone' => $customer->user->phone,
+                                'email' => $customer->user->email,
+                                'status' => $customer->user->status
+                            ];
+                        })
                 ],
                 'providers' => [
                     'count' => Provider::count(),
-                    'recent' => Provider::with('user:id,first_name,last_name')
+                    'recent' => Provider::with(['user' => function($query) {
+                            $query->select('id', 'first_name', 'last_name');
+                        }])
                         ->select('id', 'user_id', 'provider_type')
                         ->latest()
                         ->take(5)
@@ -37,13 +51,15 @@ class DashboardController extends Controller
                             return [
                                 'first_name' => $provider->user->first_name,
                                 'last_name' => $provider->user->last_name,
-                                'provider_type' => $provider->provider_type
+                                'type' => $provider->provider_type
                             ];
                         })
                 ],
                 'services' => [
                     'count' => Service::count(),
-                    'popular' => Service::with('category:id,name,icon')
+                    'popular' => Service::with(['category' => function($query) {
+                            $query->select('id', 'name', 'icon');
+                        }])
                         ->select('id', 'name', 'category_id', 'is_active')
                         ->latest()
                         ->take(5)
