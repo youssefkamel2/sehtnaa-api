@@ -19,15 +19,43 @@ class DashboardController extends Controller
             $data = [
                 'users' => [
                     'count' => User::count(),
-                    'recent' => User::latest()->take(5)->get(),
+                    'recent' => User::select('first_name', 'last_name', 'gender', 'phone', 'email', 'status')
+                        ->latest()
+                        ->take(5)
+                        ->get()
                 ],
                 'providers' => [
                     'count' => Provider::count(),
-                    'recent' => Provider::latest()->take(5)->get(),
+                    'recent' => Provider::with('user:id,first_name,last_name')
+                        ->select('id', 'user_id', 'provider_type')
+                        ->latest()
+                        ->take(5)
+                        ->get()
+                        ->map(function ($provider) {
+                            return [
+                                'first_name' => $provider->user->first_name,
+                                'last_name' => $provider->user->last_name,
+                                'provider_type' => $provider->provider_type
+                            ];
+                        })
                 ],
                 'services' => [
                     'count' => Service::count(),
-                    'popular' => Service::latest()->take(5)->get(),
+                    'popular' => Service::with('category:id,name,icon')
+                        ->select('id', 'name', 'category_id', 'status')
+                        ->latest()
+                        ->take(5)
+                        ->get()
+                        ->map(function ($service) {
+                            return [
+                                'name' => $service->name,
+                                'status' => $service->status,
+                                'category' => [
+                                    'name' => $service->category->name,
+                                    'icon' => $service->category->icon
+                                ]
+                            ];
+                        })
                 ]
             ];
 
