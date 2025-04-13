@@ -52,6 +52,7 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     // customers
     Route::prefix('customers')->group(function () {
         Route::get('/', [CustomerController::class, 'getAllCustomers']);
+        Route::post('/{id}/toggle-status', [CustomerController::class, 'toggleCustomerStatus']);
     });
 });
 
