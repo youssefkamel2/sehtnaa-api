@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProviderController;
 use App\Http\Controllers\Api\ResetPasswordController;
 use App\Http\Controllers\Api\ComplaintController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\TestNotificationController;
 
 Route::prefix('auth')->group(function () {
@@ -46,7 +47,7 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
         Route::put('/{id}/status', [ComplaintController::class, 'updateStatus']);
     }); 
     // dashboard
-    Route::get('/dashboard', [AdminController::class, 'dashboard']);
+    Route::get('/dashboard', [DashboardController::class, 'dashboard']);
 });
 
 
