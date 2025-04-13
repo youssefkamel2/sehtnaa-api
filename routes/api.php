@@ -7,10 +7,11 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\RequestController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ProviderController;
-use App\Http\Controllers\Api\ResetPasswordController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\ResetPasswordController;
 use App\Http\Controllers\Api\TestNotificationController;
 
 Route::prefix('auth')->group(function () {
@@ -48,6 +49,10 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     }); 
     // dashboard
     Route::get('/dashboard', [DashboardController::class, 'dashboard']);
+    // customers
+    Route::prefix('customers')->group(function () {
+        Route::get('/', [CustomerController::class, 'getAllCustomers']);
+    });
 });
 
 
