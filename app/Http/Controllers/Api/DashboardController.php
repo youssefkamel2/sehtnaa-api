@@ -42,14 +42,14 @@ class DashboardController extends Controller
                 'services' => [
                     'count' => Service::count(),
                     'popular' => Service::with('category:id,name,icon')
-                        ->select('id', 'name', 'category_id', 'status')
+                        ->select('id', 'name', 'category_id', 'is_active')
                         ->latest()
                         ->take(5)
                         ->get()
                         ->map(function ($service) {
                             return [
                                 'name' => $service->name,
-                                'status' => $service->status,
+                                'status' => $service->is_active ? 'Active' : 'Inactive',
                                 'category' => [
                                     'name' => $service->category->name,
                                     'icon' => $service->category->icon
