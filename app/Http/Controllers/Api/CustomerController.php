@@ -39,4 +39,27 @@ class CustomerController extends Controller
             return $this->error('Failed to retrieve customers: ' . $e->getMessage(), 500);
         }
     }
+
+    // function to toggle customer status
+    public function toggleCustomerStatus(Request $request, $id)
+    {
+        try {
+            $customer = Customer::with('user')->findOrFail($id);
+            
+            if (!$customer->user) {
+                return $this->error('Customer user not found', 404);
+            }
+
+            // Toggle the status
+            $customer->user->status = $customer->user->status === 'active' ? 'inactive' : 'active';
+            $customer->user->save();
+
+            return $this->success([
+                'status' => $customer->user->status
+            ], 'Customer status updated successfully');
+
+        } catch (\Exception $e) {
+            return $this->error('Failed to update customer status: ' . $e->getMessage(), 500);
+        }
+    }
 }
