@@ -20,7 +20,8 @@ class DashboardController extends Controller
             $data = [
                 'users' => [
                     'count' => Customer::count(),
-                    'recent' => Customer::select('first_name', 'last_name', 'gender', 'phone', 'email', 'status')
+                    'recent' => Customer::with('user:id,first_name,last_name,gender,phone_number,email')
+                        ->select('id', 'user_id', 'gender', 'phone_number', 'email')
                         ->latest()
                         ->take(5)
                         ->get()
