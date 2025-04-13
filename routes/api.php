@@ -45,6 +45,8 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
         Route::get('/{id}', [ComplaintController::class, 'show']);
         Route::put('/{id}/status', [ComplaintController::class, 'updateStatus']);
     }); 
+    // dashboard
+    Route::get('/dashboard', [AdminController::class, 'dashboard']);
 });
 
 
