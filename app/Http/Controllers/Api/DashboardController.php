@@ -23,15 +23,11 @@ class DashboardController extends Controller
                 ],
                 'providers' => [
                     'count' => Provider::count(),
-                    'recent' => Provider::with('user')->latest()->take(5)->get(),
+                    'recent' => Provider::latest()->take(5)->get(),
                 ],
                 'services' => [
                     'count' => Service::count(),
-                    'popular' => Service::orderBy('views', 'desc')->take(5)->get(),
-                ],
-                'stats' => [
-                    'total_active_users' => User::where('status', 'active')->count(),
-                    'pending_providers' => Provider::whereHas('user', fn($q) => $q->where('status', 'pending'))->count(),
+                    'popular' => Service::latest()->take(5)->get(),
                 ]
             ];
 
