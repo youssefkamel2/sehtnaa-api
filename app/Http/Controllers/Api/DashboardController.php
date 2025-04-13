@@ -57,7 +57,7 @@ class DashboardController extends Controller
                 ],
                 'services' => [
                     'count' => Service::count(),
-                    'popular' => Service::with(['category' => function($query) {
+                    'recent' => Service::with(['category' => function($query) {
                             $query->select('id', 'name', 'icon');
                         }])
                         ->select('id', 'name', 'category_id', 'is_active')
