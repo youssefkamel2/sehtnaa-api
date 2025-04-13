@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\User;
 use App\Models\Provider;
 use App\Models\Service;
@@ -18,8 +19,8 @@ class DashboardController extends Controller
         try {
             $data = [
                 'users' => [
-                    'count' => User::count(),
-                    'recent' => User::select('first_name', 'last_name', 'gender', 'phone', 'email', 'status')
+                    'count' => Customer::count(),
+                    'recent' => Customer::select('first_name', 'last_name', 'gender', 'phone', 'email', 'status')
                         ->latest()
                         ->take(5)
                         ->get()
