@@ -62,4 +62,5 @@ class CustomerController extends Controller
             return $this->error('Failed to update customer status: ' . $e->getMessage(), 500);
         }
     }
+    
 }
