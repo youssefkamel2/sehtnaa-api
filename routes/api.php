@@ -81,7 +81,7 @@ Route::prefix('categories')->middleware(['auth:api'])->group(function () {
 });
 
 Route::prefix('services')->middleware(['auth:api'])->group(function () {
-    Route::get('/', [ServiceController::class, 'index']);
+    Route::get('/', [ServiceController::class, 'index'])->middleware(['role:admin']);
     Route::post('/', [ServiceController::class, 'store'])->middleware(['role:admin']);
     Route::get('/{id}', [ServiceController::class, 'show']);
     Route::post('/{id}', [ServiceController::class, 'update'])->middleware(['role:admin']);
