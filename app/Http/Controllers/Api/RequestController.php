@@ -94,7 +94,9 @@ class RequestController extends Controller
     {
         try {
             $request = ServiceRequest::with([
-                'complaints',
+                'complaints' => function($query) {
+                    $query->orderBy('created_at', 'desc');
+                },
                 'assignedProvider.user:id,first_name,last_name,profile_image'
             ])->find($id);
 
