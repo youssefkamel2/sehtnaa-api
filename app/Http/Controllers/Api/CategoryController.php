@@ -18,9 +18,6 @@ class CategoryController extends Controller
         try {
             $categories = Category::with('addedBy')
                 ->ordered()
-                ->when(!$request->user() || !$request->user()->hasRole('admin'), function ($query) {
-                    return $query->active();
-                })
                 ->get();
 
             return $this->success($categories, 'Categories fetched successfully');
@@ -210,9 +207,6 @@ class CategoryController extends Controller
     
                 $services = $category->services()
                     ->with(['category:id,name,icon'])
-                    ->when(!$request->user()?->hasRole('admin'), function ($query) {
-                        return $query->where('is_active', true);
-                    })
                     ->orderBy('created_at', 'desc')
                     ->get()
                     ->map(function ($service) {
