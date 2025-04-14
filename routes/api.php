@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\RequestController;
+use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ProviderController;
@@ -69,15 +70,23 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
 });
 
 
-Route::prefix('categories')->group(function () {
+Route::prefix('categories')->middleware(['auth:api'])->group(function () {
     Route::get('/', [CategoryController::class, 'index']);
-    Route::post('/', [CategoryController::class, 'store'])->middleware(['auth:api', 'role:admin']);
+    Route::post('/', [CategoryController::class, 'store'])->middleware(['role:admin']);
     Route::get('/{id}', [CategoryController::class, 'show']);
-    Route::post('/{id}', [CategoryController::class, 'update'])->middleware(['auth:api', 'role:admin']);
-    Route::delete('/{id}', [CategoryController::class, 'destroy'])->middleware(['auth:api', 'role:admin']);
-    Route::post('/{id}/toggle-status', [CategoryController::class, 'toggleStatus'])->middleware(['auth:api', 'role:admin']);
+    Route::post('/{id}', [CategoryController::class, 'update'])->middleware(['role:admin']);
+    Route::delete('/{id}', [CategoryController::class, 'destroy'])->middleware(['role:admin']);
+    Route::post('/{id}/toggle-status', [CategoryController::class, 'toggleStatus'])->middleware(['role:admin']);
     Route::get('/{id}/services', [CategoryController::class, 'getCategoryServices']);
+});
 
+Route::prefix('services')->middleware(['auth:api'])->group(function () {
+    Route::get('/', [ServiceController::class, 'index']);
+    Route::post('/', [ServiceController::class, 'store'])->middleware(['role:admin']);
+    Route::get('/{id}', [ServiceController::class, 'show']);
+    Route::post('/{id}', [ServiceController::class, 'update'])->middleware(['role:admin']);
+    Route::delete('/{id}', [ServiceController::class, 'destroy'])->middleware(['role:admin']);
+    Route::post('/{id}/toggle-status', [ServiceController::class, 'toggleStatus'])->middleware(['role:admin']);
 });
 
 // requests
