@@ -16,8 +16,13 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         try {
+            $user = auth()->user();
+            
             $categories = Category::with('addedBy')
                 ->ordered()
+                ->when($user->user_type !== 'admin', function($query) {
+                    return $query->where('is_active', true);
+                })
                 ->get();
 
             return $this->success($categories, 'Categories fetched successfully');

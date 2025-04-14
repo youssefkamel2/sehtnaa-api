@@ -15,8 +15,12 @@ class ServiceController extends Controller
     public function index()
     {
         try {
+            $user = auth()->user();
+            
             $services = Service::with(['category:id,name,icon'])
-                ->where('is_active', true)
+                ->when($user->user_type !== 'admin', function($query) {
+                    return $query->where('is_active', true);
+                })
                 ->orderBy('created_at', 'desc')
                 ->get();
 
