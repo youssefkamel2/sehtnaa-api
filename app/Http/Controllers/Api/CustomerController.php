@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Traits\ResponseTrait;
-use Illuminate\Http\Request;
 
 class CustomerController extends Controller
 {
@@ -41,7 +40,7 @@ class CustomerController extends Controller
     }
 
     // function to toggle customer status
-    public function toggleCustomerStatus(Request $request, $id)
+    public function toggleCustomerStatus($id)
     {
         try {
             $customer = Customer::with('user')->findOrFail($id);
@@ -62,5 +61,5 @@ class CustomerController extends Controller
             return $this->error('Failed to update customer status: ' . $e->getMessage(), 500);
         }
     }
-    
+
 }
