@@ -198,5 +198,41 @@ class CategoryController extends Controller
         }
     }
 
+    // get category services
+        public function getCategoryServices(Request $request, $id)
+        {
+            try {
+                $category = Category::find($id);
+    
+                if (!$category) {
+                    return $this->error('Category not found', 404);
+                }
+    
+                $services = $category->services()
+                    ->with(['category:id,name,icon'])
+                    ->when(!$request->user()?->hasRole('admin'), function ($query) {
+                        return $query->where('is_active', true);
+                    })
+                    ->orderBy('created_at', 'desc')
+                    ->get()
+                    ->map(function ($service) {
+                        return [
+                            'id' => $service->id,
+                            'name' => $service->name,
+                            'description' => $service->description,
+                            'price' => $service->price,
+                            'status' => $service->is_active ? 'Active' : 'de-active',
+                            'category' => [
+                                'name' => $service->category->name,
+                                'icon' => $service->category->icon
+                            ]
+                        ];
+                    });
+    
+                return $this->success($services, 'Category services fetched successfully');
+            } catch (\Exception $e) {
+                return $this->error('Failed to fetch category services: ' . $e->getMessage(), 500);
+            }
+        }
 
 }

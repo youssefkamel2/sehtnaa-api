@@ -76,6 +76,8 @@ Route::prefix('categories')->group(function () {
     Route::post('/{id}', [CategoryController::class, 'update'])->middleware(['auth:api', 'role:admin']);
     Route::delete('/{id}', [CategoryController::class, 'destroy'])->middleware(['auth:api', 'role:admin']);
     Route::post('/{id}/toggle-status', [CategoryController::class, 'toggleStatus'])->middleware(['auth:api', 'role:admin']);
+    Route::get('/{id}/services', [CategoryController::class, 'getCategoryServices']);
+
 });
 
 // requests
