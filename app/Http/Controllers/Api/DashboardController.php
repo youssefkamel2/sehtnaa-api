@@ -60,7 +60,7 @@ class DashboardController extends Controller
                     'recent' => Service::with(['category' => function($query) {
                             $query->select('id', 'name', 'icon');
                         }])
-                        ->select('id', 'name', 'category_id', 'is_active')
+                        ->select('id', 'name', 'category_id', 'is_active', 'cover_photo')
                         ->latest()
                         ->take(5)
                         ->get()
@@ -68,6 +68,7 @@ class DashboardController extends Controller
                             return [
                                 'name' => $service->name,
                                 'status' => $service->is_active ? 'Active' : 'Inactive',
+                                'cover_photo' => $service->cover_photo,
                                 'category' => [
                                     'name' => $service->category->name,
                                     'icon' => $service->category->icon
