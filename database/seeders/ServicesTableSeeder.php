@@ -27,6 +27,8 @@ class ServicesTableSeeder extends Seeder
                 'price' => 200.00,
                 'provider_type' => 'individual',
                 'is_active' => true,
+                'icon' => 'service_icons/service_icon.png',
+                'cover_photo' => 'service_covers/service_image.png',
                 'category_id' => $categories->where('name.en', 'Chronic Disease Management')->first()->id
             ],
             [
@@ -41,6 +43,8 @@ class ServicesTableSeeder extends Seeder
                 'price' => 150.00,
                 'provider_type' => 'individual',
                 'is_active' => true,
+                'icon' => 'service_icons/service_icon.png',
+                'cover_photo' => 'service_covers/service_image.png',
                 'category_id' => $categories->where('name.en', 'Home Nursing Service')->first()->id
             ],
             [
@@ -55,6 +59,8 @@ class ServicesTableSeeder extends Seeder
                 'price' => 250.00,
                 'provider_type' => 'individual',
                 'is_active' => true,
+                'icon' => 'service_icons/service_icon.png',
+                'cover_photo' => 'service_covers/service_image.png',
                 'category_id' => $categories->where('name.en', 'Home Visit')->first()->id
             ],
             [
@@ -69,6 +75,8 @@ class ServicesTableSeeder extends Seeder
                 'price' => 180.00,
                 'provider_type' => 'individual',
                 'is_active' => true,
+                'icon' => 'service_icons/service_icon.png',
+                'cover_photo' => 'service_covers/service_image.png',
                 'category_id' => $categories->where('name.en', 'Physiotherapy & Rehabilitation')->first()->id
             ],
             [
@@ -83,6 +91,8 @@ class ServicesTableSeeder extends Seeder
                 'price' => 120.00,
                 'provider_type' => 'individual',
                 'is_active' => true,
+                'icon' => 'service_icons/service_icon.png',
+                'cover_photo' => 'service_covers/service_image.png',
                 'category_id' => $categories->where('name.en', 'Schedule a Lab Test')->first()->id
             ]
         ];

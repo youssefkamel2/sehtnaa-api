@@ -17,6 +17,10 @@ return new class extends Migration
             $table->json('description')->nullable(); // JSON for multi-language support
             $table->enum('provider_type', ['individual', 'organizational']);
             $table->decimal('price', 10, 2);
+            $table->string('icon')->nullable();
+            $table->string('cover_photo')->nullable();
+            $table->foreignId('category_id')->constrained('categories')->onDelete('cascade');
+            $table->boolean('is_active')->default(true);
             $table->foreignId('added_by')->constrained('users')->onDelete('cascade');
             $table->timestamps();
         });

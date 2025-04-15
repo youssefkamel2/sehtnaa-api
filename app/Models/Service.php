@@ -13,7 +13,9 @@ class Service extends Model
         'price', 
         'added_by',
         'category_id',
-        'is_active'
+        'is_active',
+        'icon',
+        'cover_photo'
     ];
 
     protected $casts = [
