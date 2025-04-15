@@ -210,7 +210,6 @@ class CategoryController extends Controller
             }
 
             $services = $category->services()
-                ->with(['category:id,name,icon'])
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($service) {

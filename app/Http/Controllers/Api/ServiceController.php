@@ -174,7 +174,6 @@ class ServiceController extends Controller
             return $this->error('Failed to delete service: ' . $e->getMessage(), 500);
         }
     }
-
     public function toggleStatus($id)
     {
         try {
