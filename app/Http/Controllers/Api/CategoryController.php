@@ -220,11 +220,7 @@ class CategoryController extends Controller
                         'price' => $service->price,
                         'status' => $service->is_active ? 'Active' : 'de-active',
                         'icon' => $service->icon,
-                        'cover_photo' => $service->cover_photo,
-                        'category' => [
-                            'name' => $service->category->name,
-                            'icon' => $service->category->icon
-                        ]
+                        'cover_photo' => $service->cover_photo
                     ];
                 });
 
