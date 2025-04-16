@@ -15,7 +15,6 @@ return new class extends Migration
             $table->string('subject');
             $table->text('description');
             $table->enum('status', ['open', 'in_progress', 'resolved', 'closed'])->default('open');
-            // add column for response so admin will update status and add response [text]
             $table->text('response')->nullable();
             $table->foreignId('assigned_admin_id')->nullable()->constrained('admins')->onDelete('set null');
             $table->timestamp('resolved_at')->nullable();

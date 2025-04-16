@@ -30,6 +30,7 @@ Route::prefix('reset-password')->group(function () {
 
 // Provider routes
 Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
+    Route::get('/all', [ProviderController::class, 'getAllProviders'])->middleware(['auth:api', 'role:admin']);
     Route::post('/upload-document', [ProviderController::class, 'uploadDocument']);
     Route::post('/documents', [ProviderController::class, 'listDocuments']);
     Route::post('/document-status', [ProviderController::class, 'documentStatus']);
