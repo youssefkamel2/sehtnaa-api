@@ -23,7 +23,10 @@ class ProviderController extends Controller
     public function getAllProviders(Request $request)
     {
         try {
-            $providers = Provider::with(['user:id,first_name,last_name,email,phone,status'])
+            $providers = Provider::with([
+                    'user:id,first_name,last_name,email,phone,status',
+                    'documents.requiredDocument:id,name' 
+                ])
                 ->get()
                 ->groupBy('provider_type');
 
