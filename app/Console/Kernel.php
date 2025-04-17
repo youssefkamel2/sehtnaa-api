@@ -13,13 +13,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // Process queue jobs with detailed logging
-        $schedule->command('queue:work', [
-            '--queue' => 'notifications,default',
-            '--tries' => 3,
-            '--sleep' => 3,
-            '--timeout' => 60,
-            '--stop-when-empty'
-        ])
+        $schedule->command('queue:work --queue=notifications,default --tries=3 --sleep=3 --timeout=60 --stop-when-empty')
         ->everyMinute()
         ->withoutOverlapping()
         ->appendOutputTo(storage_path('logs/queue-worker.log'))
@@ -31,17 +25,15 @@ class Kernel extends ConsoleKernel
             Log::channel('scheduler')->info("Queue processed successfully", [
                 'jobs_processed' => $processedJobs,
                 'jobs_failed' => $failedJobs,
-                'last_job' => $this->getLastProcessedJob($output),
-                'execution_time' => $this->getExecutionTime($output)
+                'output' => $output
             ]);
             
-            // Clear the log for next run
             file_put_contents(storage_path('logs/queue-worker.log'), '');
         })
         ->onFailure(function () {
             $error = file_get_contents(storage_path('logs/queue-worker.log'));
             Log::channel('scheduler')->error('Queue processing failed', [
-                'error_details' => $error
+                'error' => $error
             ]);
         });
 
@@ -164,7 +156,7 @@ class Kernel extends ConsoleKernel
         if (!file_exists($path)) {
             return ['status' => 'not_found'];
         }
-        
+
         return [
             'size' => round(filesize($path) / 1024 . ' KB'),
             'last_modified' => date('Y-m-d H:i:s', filemtime($path)),
