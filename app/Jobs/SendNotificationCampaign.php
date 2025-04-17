@@ -53,8 +53,11 @@ class SendNotificationCampaign implements ShouldQueue
                 if (!$response) {
                     $this->logAttempt([
                         'status' => 'failed',
-                        'reason' => 'firebase_error',
-                        'response' => ['success' => false]
+                        'reason' => 'Firebase returned false',
+                        'response' => [
+                            'success' => false,
+                            'error_details' => 'Boolean response received'
+                        ]
                     ]);
                     throw new \Exception('Failed to send notification');
                 }
@@ -62,12 +65,21 @@ class SendNotificationCampaign implements ShouldQueue
             } else {
                 $responseData = $response;
                 if (!($response['success'] ?? false)) {
+                    $errorMessage = $response['error'] ?? '';
+                    $errorDetails = $response['error_details'] ?? '';
+                    $fullError = trim($errorMessage . ' ' . $errorDetails);
+                    
                     $this->logAttempt([
                         'status' => 'failed',
-                        'reason' => $response['error'] ?? 'firebase_error',
-                        'response' => $response
+                        'reason' => $fullError ?: 'Unknown Firebase error',
+                        'response' => [
+                            'success' => false,
+                            'error' => $errorMessage,
+                            'error_details' => $errorDetails,
+                            'raw_response' => $response
+                        ]
                     ]);
-                    throw new \Exception($response['error'] ?? 'Failed to send notification');
+                    throw new \Exception($fullError ?: 'Failed to send notification');
                 }
             }
 
