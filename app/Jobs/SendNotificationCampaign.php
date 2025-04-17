@@ -28,19 +28,15 @@ class SendNotificationCampaign implements ShouldQueue
             $user = $this->notificationLog->user;
             
             if (!$user->fcm_token) {
-                Log::info('Notification skipped - No FCM token', [
-                    'campaign_id' => $this->notificationLog->campaign_id,
-                    'user_id' => $user->id,
-                    'error' => 'User has no FCM token'
+                $this->logNotification('warning', 'Notification skipped - No FCM token', [
+                    'status' => 'skipped',
+                    'reason' => 'missing_token'
                 ]);
                 throw new \Exception('User has no FCM token');
             }
 
-            Log::info('Attempting to send notification', [
-                'campaign_id' => $this->notificationLog->campaign_id,
-                'user_id' => $user->id,
-                'fcm_token' => $user->fcm_token,
-                'title' => $this->notificationLog->title
+            $this->logNotification('info', 'Notification attempt started', [
+                'status' => 'attempting'
             ]);
 
             $sent = $firebaseService->sendToDevice(
@@ -51,18 +47,15 @@ class SendNotificationCampaign implements ShouldQueue
             );
 
             if (!$sent) {
-                Log::error('Firebase notification failed', [
-                    'campaign_id' => $this->notificationLog->campaign_id,
-                    'user_id' => $user->id,
-                    'fcm_token' => $user->fcm_token
+                $this->logNotification('error', 'Firebase notification failed', [
+                    'status' => 'failed',
+                    'reason' => 'firebase_error'
                 ]);
                 throw new \Exception('Failed to send notification');
             }
 
-            Log::info('Firebase notification sent successfully', [
-                'campaign_id' => $this->notificationLog->campaign_id,
-                'user_id' => $user->id,
-                'fcm_token' => $user->fcm_token
+            $this->logNotification('info', 'Firebase notification sent successfully', [
+                'status' => 'success'
             ]);
 
             $this->notificationLog->update([
@@ -70,12 +63,9 @@ class SendNotificationCampaign implements ShouldQueue
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Notification error', [
-                'campaign_id' => $this->notificationLog->campaign_id,
-                'user_id' => $user->id ?? null,
-                'fcm_token' => $user->fcm_token ?? null,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            $this->logNotification('error', $e->getMessage(), [
+                'status' => 'error',
+                'error_trace' => $this->formatTrace($e->getTraceAsString())
             ]);
 
             $this->notificationLog->update([
@@ -83,5 +73,24 @@ class SendNotificationCampaign implements ShouldQueue
                 'error_message' => $e->getMessage()
             ]);
         }
+    }
+
+    protected function logNotification($level, $message, array $context = [])
+    {
+        $baseContext = [
+            'campaign_id' => $this->notificationLog->campaign_id,
+            'user_id' => $this->notificationLog->user->id ?? null,
+            'fcm_token' => $this->notificationLog->user->fcm_token ?? null,
+            'title' => $this->notificationLog->title,
+            'timestamp' => now()->toIso8601String()
+        ];
+
+        Log::channel('notifications')->{$level}($message, array_merge($baseContext, $context));
+    }
+
+    protected function formatTrace($trace)
+    {
+        $lines = explode("\n", $trace);
+        return array_slice($lines, 0, 5); // Return only first 5 lines of trace
     }
 }
