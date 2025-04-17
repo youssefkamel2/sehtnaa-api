@@ -18,9 +18,6 @@ class ProviderController extends Controller
 {
     use ResponseTrait;
 
-    /**
-     * Get all providers separated by type
-     */
     public function getAllProviders(Request $request)
     {
         try {
@@ -41,9 +38,40 @@ class ProviderController extends Controller
         }
     }
 
-    /**
-     * Upload or re-upload a document
-     */
+    // change provider status
+    public function changeStatus(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'provider_id' => 'required|exists:providers,id',
+                'status' => 'required|in:pending,active,de-active'
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 400);
+            }
+
+            $provider = Provider::with('user')->find($request->provider_id);
+            
+            if (!$provider) {
+                return $this->error('Provider not found', 404);
+            }
+
+            $provider->user()->update([
+                'status' => $request->status
+            ]);
+
+            return $this->success([
+                'provider_id' => $provider->id,
+                'status' => $request->status
+            ], 'Provider status updated successfully');
+            
+        } catch (\Exception $e) {
+            Log::error('ProviderController::changeStatus - ' . $e->getMessage());
+            return $this->error('Failed to update provider status', 500);
+        }
+    }
+
     public function uploadDocument(Request $request)
     {
         try {
@@ -113,9 +141,6 @@ class ProviderController extends Controller
         }
     }
 
-    /**
-     * List all uploaded documents for a provider
-     */
     public function listDocuments(Request $request)
     {
         try {
@@ -144,9 +169,6 @@ class ProviderController extends Controller
         }
     }
 
-    /**
-     * Get document status and account status
-     */
     public function documentStatus(Request $request)
     {
         try {
@@ -176,9 +198,6 @@ class ProviderController extends Controller
         }
     }
 
-    /**
-     * Get remaining required documents
-     */
     public function getRequiredDocuments(Request $request)
     {
         try {
@@ -215,10 +234,6 @@ class ProviderController extends Controller
         }
     }
 
-    // Approve a provider document
-    /**
-     * Approve a provider document and check if provider should be activated
-     */
     public function approveDocument(Request $request)
     {
         try {
@@ -255,9 +270,6 @@ class ProviderController extends Controller
         }
     }
 
-    /**
-     * Reject a provider document with reason
-     */
     public function rejectDocument(Request $request)
     {
         try {
@@ -371,8 +383,7 @@ class ProviderController extends Controller
             return $this->error('Failed to update required document', 500);
         }
     }
-    public function deleteRequiredDocument($id)
-    {
+    public function deleteRequiredDocument($id){
         try {
             $document = RequiredDocument::find($id);
 
