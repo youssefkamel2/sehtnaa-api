@@ -10,13 +10,13 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule)
     {
-        // Process queue jobs
+        // Process queue jobs - CORRECTED VERSION
         $schedule->command('queue:work', [
             '--queue' => 'notifications,default',
             '--tries' => 3,
-            '--stop-when-empty' => true,
             '--sleep' => 3,
-            '--timeout' => 60
+            '--timeout' => 60,
+            '--stop-when-empty' // This is now correctly passed as a flag
         ])
             ->everyMinute()
             ->withoutOverlapping()
