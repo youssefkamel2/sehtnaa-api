@@ -14,6 +14,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('queue:work --stop-when-empty --tries=3')
             ->everyMinute()
             ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/queue-worker.log'))
             ->onSuccess(function () {
                 Log::channel('scheduler')->info('Queue processed successfully');
             })
@@ -53,9 +54,19 @@ class Kernel extends ConsoleKernel
 
         // Monitor queue health
         $schedule->command('queue:monitor')
-            ->hourly()
+            ->everyFiveMinutes()
             ->onSuccess(function () {
                 Log::channel('scheduler')->info('Queue health check completed');
+            });
+
+        // Clean log files (laravel.log and notifications.log) older than 48 hours
+        $schedule->command('log:clean --keep-last=48')
+            ->daily()
+            ->onSuccess(function () {
+                Log::channel('scheduler')->info('Log files cleanup completed successfully.');
+            })
+            ->onFailure(function () {
+                Log::channel('scheduler')->error('Log files cleanup failed.');
             });
     }
 
