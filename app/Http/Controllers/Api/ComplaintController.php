@@ -31,8 +31,7 @@ class ComplaintController extends Controller
             // return all complaints
             $complaints = Complaint::with([
                 'request.service',
-                'request.customer.user',
-                'request.assignedProvider.user',
+                'request.assignedProvider.user:id,first_name,last_name',
                 'user:id,first_name,last_name'
             ])->get();
             // $complaints = $complaints->get();
