@@ -122,14 +122,22 @@ class AdminController extends Controller
         }
     }
 
-    public function toggleStatus($id)
+    public function toggleStatus(Request $request)
     {
         if (!$this->checkSuperAdmin()) {
             return $this->error('Only super admins can manage admin status.', 403);
         }
 
         try {
-            $user = User::with('admin')->find($id);
+
+            $validator = Validator::make($request->all(), [
+                'email' => 'required|email|exists:users,email',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 400);
+            }
+            $user = User::where('email', $request->email)->first();
 
             if (!$user) {
                 return $this->error('Admin not found.', 404);
@@ -155,36 +163,4 @@ class AdminController extends Controller
             return $this->error('Failed to update admin status: ' . $e->getMessage(), 500);
         }
     }
-
-    // public function deleteAdmin(Request $request)
-    // {
-    //     $validator = Validator::make($request->all(), [
-    //         'email' => 'required|email|exists:users,email',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return $this->error($validator->errors()->first(), 400);
-    //     }
-
-    //     $admin = JWTAuth::parseToken()->authenticate();
-    //     $admin->load('admin');
-
-    //     if (!$admin->admin || $admin->admin->role !== 'super_admin') {
-    //         return $this->error('Only super admins can delete admins.', 403);
-    //     }
-
-    //     $user = User::where('email', $request->email)->first();
-
-    //     if ($user->user_type !== 'admin') {
-    //         return $this->error('You can only delete admin accounts.', 403);
-    //     }
-
-    //     if ($user->admin->role === 'super_admin') {
-    //         return $this->error('Super admin accounts cannot be deleted.', 403);
-    //     }
-
-    //     $user->delete();
-
-    //     return $this->success(null, 'Admin account deleted successfully.');
-    // }
 }

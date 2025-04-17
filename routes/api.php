@@ -40,7 +40,7 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     Route::get('/', [AdminController::class,'index']);
     Route::post('/create-admin', [AdminController::class, 'createAdmin']);
     Route::post('/delete-admin', [AdminController::class, 'deleteAdmin']);
-    Route::post('/deactivate-admin', [AdminController::class, 'deactivateAdmin']);
+    Route::post('/deactivate-admin', [AdminController::class, 'toggleStatus']);
     Route::prefix('complaints')->group(function () {
         Route::get('/', [ComplaintController::class, 'index']);
         Route::get('/{id}', [ComplaintController::class, 'show']);
