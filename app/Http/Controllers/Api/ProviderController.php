@@ -374,7 +374,11 @@ class ProviderController extends Controller
     public function deleteRequiredDocument($id)
     {
         try {
-            $document = RequiredDocument::findOrFail($id);
+            $document = RequiredDocument::find($id);
+
+            if (!$document) {
+                return $this->error('Document not found', 404);
+            }
 
             // Update related provider documents to store the document name
             ProviderDocument::where('required_document_id', $id)
