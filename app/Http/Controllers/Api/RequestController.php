@@ -40,9 +40,8 @@ class RequestController extends Controller
                 'customer.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
-                'feedbacks',
-                'cancellations',
-                'complaints'
+                'feedbacks:id,user_id,rating,comment,created_at',
+                'complaints:id,user_id,subject,description,status,response,created_at',
             ])
                 ->orderBy('created_at', 'desc')
                 ->get()
