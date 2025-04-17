@@ -211,7 +211,7 @@ class UserController extends Controller
                 SUM(CASE WHEN is_sent = 0 THEN 1 ELSE 0 END) as failed_count
             ')
             ->groupBy('campaign_id', 'title', 'body', 'data', 'created_at')
-            ->orderBy('created_at', 'desc');
+            ->orderBy('created_at', 'desc')->get();
 
             return $this->success($campaigns, 'Campaigns retrieved successfully');
 
