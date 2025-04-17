@@ -64,6 +64,13 @@ return [
             'level' => 'debug',
         ],
 
+        'notifications' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/notifications.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'permission' => 0664,
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
