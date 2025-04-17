@@ -16,6 +16,7 @@ class SendNotificationCampaign implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected $notificationLog;
+    protected $maxAttempts = 3;
 
     public function __construct(NotificationLog $notificationLog)
     {
@@ -31,14 +32,17 @@ class SendNotificationCampaign implements ShouldQueue
                 $this->logAttempt([
                     'status' => 'skipped',
                     'reason' => 'missing_token',
-                    'response' => null
+                    'response' => [
+                        'success' => false,
+                        'error' => 'User has no FCM token'
+                    ]
                 ]);
                 throw new \Exception('User has no FCM token');
             }
 
             $this->logAttempt([
                 'status' => 'start',
-                'response' => null
+                'details' => 'Attempting to send notification'
             ]);
 
             $response = $firebaseService->sendToDevice(
@@ -48,63 +52,52 @@ class SendNotificationCampaign implements ShouldQueue
                 $this->notificationLog->data ?? []
             );
 
-            // Handle both boolean and array responses
-            if (is_bool($response)) {
-                if (!$response) {
-                    $this->logAttempt([
-                        'status' => 'failed',
-                        'reason' => 'Firebase returned false',
-                        'response' => [
-                            'success' => false,
-                            'error_details' => 'Boolean response received'
-                        ]
-                    ]);
-                    throw new \Exception('Failed to send notification');
-                }
-                $responseData = ['success' => true];
-            } else {
-                $responseData = $response;
-                if (!($response['success'] ?? false)) {
-                    $errorMessage = $response['error'] ?? '';
-                    $errorDetails = $response['error_details'] ?? '';
-                    $fullError = trim($errorMessage . ' ' . $errorDetails);
-                    
-                    $this->logAttempt([
-                        'status' => 'failed',
-                        'reason' => $fullError ?: 'Unknown Firebase error',
-                        'response' => [
-                            'success' => false,
-                            'error' => $errorMessage,
-                            'error_details' => $errorDetails,
-                            'raw_response' => $response
-                        ]
-                    ]);
-                    throw new \Exception($fullError ?: 'Failed to send notification');
-                }
-            }
-
-            $this->logAttempt([
-                'status' => 'success',
-                'response' => $responseData
-            ]);
-
-            $this->notificationLog->update([
-                'is_sent' => true
-            ]);
+            // Enhanced response handling
+            $this->handleFirebaseResponse($response);
 
         } catch (\Exception $e) {
-            $this->logAttempt([
-                'status' => 'error',
-                'reason' => $e->getMessage(),
-                'error_trace' => $this->formatTrace($e->getTraceAsString()),
-                'response' => $responseData ?? null
-            ]);
-
-            $this->notificationLog->update([
-                'is_sent' => false,
-                'error_message' => $e->getMessage()
-            ]);
+            $this->handleFailure($e, $response ?? null);
         }
+    }
+
+    protected function handleFirebaseResponse($response)
+    {
+        $logData = [
+            'status' => is_bool($response) ? ($response ? 'success' : 'failed') : ($response['success'] ? 'success' : 'failed'),
+            'response' => is_array($response) ? $response : ['success' => $response]
+        ];
+
+        if ($logData['status'] === 'success') {
+            $this->logAttempt($logData);
+            $this->notificationLog->update([
+                'is_sent' => true,
+                'response_data' => $logData['response']
+            ]);
+        } else {
+            $error = is_array($response) 
+                ? ($response['error'] ?? $response['error_details'] ?? 'Unknown Firebase error')
+                : 'Firebase returned false';
+                
+            $logData['reason'] = $error;
+            $this->logAttempt($logData);
+            throw new \Exception($error);
+        }
+    }
+
+    protected function handleFailure(\Exception $e, $response = null)
+    {
+        $this->logAttempt([
+            'status' => 'error',
+            'reason' => $e->getMessage(),
+            'error_trace' => $this->formatTrace($e->getTraceAsString()),
+            'response' => $response ?? null
+        ]);
+
+        $this->notificationLog->update([
+            'is_sent' => false,
+            'error_message' => $e->getMessage(),
+            'response_data' => $response
+        ]);
     }
 
     protected function logAttempt(array $context = [])
@@ -118,26 +111,49 @@ class SendNotificationCampaign implements ShouldQueue
             ],
             'user' => [
                 'id' => $this->notificationLog->user->id ?? null,
-                'fcm_token' => $this->notificationLog->user->fcm_token ?? null
+                'fcm_token' => $this->notificationLog->user->fcm_token ?? null,
+                'device_type' => $this->notificationLog->user->device_type ?? null
             ],
-            'attempt' => $context
+            'attempt' => array_merge([
+                'attempt_number' => $this->attempts(),
+                'job_id' => $this->job->getJobId()
+            ], $context)
         ];
 
-        Log::channel('notifications')->info(
-            sprintf(
-                '[Campaign: %s] [User: %s] [Status: %s] %s',
-                $this->notificationLog->campaign_id,
-                $this->notificationLog->user->id ?? 'unknown',
-                $context['status'],
-                $context['reason'] ?? ''
-            ),
+        Log::channel('notifications')->log(
+            $this->getLogLevel($context['status']),
+            $this->formatLogMessage($context),
             $logData
         );
     }
 
+    protected function formatLogMessage(array $context): string
+    {
+        $parts = [
+            'Campaign:' . $this->notificationLog->campaign_id,
+            'User:' . ($this->notificationLog->user->id ?? 'unknown'),
+            'Status:' . $context['status'],
+            'Attempt:' . $this->attempts()
+        ];
+
+        if (!empty($context['reason'])) {
+            $parts[] = 'Reason:' . $context['reason'];
+        }
+
+        return implode(' | ', $parts);
+    }
+
+    protected function getLogLevel(string $status): string
+    {
+        return match($status) {
+            'error', 'failed' => 'error',
+            'skipped' => 'warning',
+            default => 'info'
+        };
+    }
+
     protected function formatTrace($trace)
     {
-        $lines = explode("\n", $trace);
-        return array_slice($lines, 0, 5);
+        return array_slice(explode("\n", $trace), 0, 5);
     }
 }

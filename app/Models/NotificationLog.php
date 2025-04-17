@@ -6,6 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class NotificationLog extends Model
 {
+    protected $casts = [
+        'data' => 'array',
+        'response_data' => 'array'
+    ];
+
     protected $fillable = [
         'campaign_id',
         'user_id',
@@ -13,12 +18,8 @@ class NotificationLog extends Model
         'body',
         'data',
         'is_sent',
-        'error_message'
-    ];
-
-    protected $casts = [
-        'data' => 'array',
-        'is_sent' => 'boolean'
+        'error_message',
+        'response_data'
     ];
 
     public function user()

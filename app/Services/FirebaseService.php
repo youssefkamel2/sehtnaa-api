@@ -5,6 +5,7 @@ namespace App\Services;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Messaging\CloudMessage;
 use Kreait\Firebase\Messaging\Notification;
+use Kreait\Firebase\Exception\MessagingException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -14,16 +15,13 @@ class FirebaseService
     {
         try {
             if (empty($deviceToken)) {
-                Log::warning('Attempted to send notification to empty device token');
-                return false;
+                throw new \InvalidArgumentException("Empty device token provided");
             }
-
-            Log::info('Sending notification to device', ['token' => $deviceToken]);
 
             $credentialsPath = Storage::path(env('FIREBASE_CREDENTIALS'));
             
             if (!file_exists($credentialsPath)) {
-                throw new \Exception("Firebase credentials file not found at: {$credentialsPath}");
+                throw new \RuntimeException("Firebase credentials file not found at: {$credentialsPath}");
             }
 
             $factory = (new Factory)->withServiceAccount($credentialsPath);
@@ -38,16 +36,45 @@ class FirebaseService
 
             $response = $messaging->send($message);
 
-            Log::info('Notification sent successfully', ['response' => $response]);
+            return [
+                'success' => true,
+                'message_id' => $response,
+                'device_token' => $deviceToken,
+                'timestamp' => now()->toIso8601String(),
+                'platform' => 'FCM'
+            ];
 
-            return true;
+        } catch (MessagingException $e) {
+            return $this->formatFirebaseError($e, $deviceToken);
         } catch (\Exception $e) {
-            Log::error('Failed to send notification', [
-                'error' => $e->getMessage(),
-                'token' => $deviceToken,
-                'trace' => $e->getTraceAsString()
-            ]);
-            return false;
+            return $this->formatGenericError($e, $deviceToken);
         }
+    }
+
+    protected function formatFirebaseError(MessagingException $e, string $deviceToken): array
+    {
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'error_code' => $e->getCode(),
+            'error_type' => 'messaging',
+            'device_token' => $deviceToken,
+            'timestamp' => now()->toIso8601String(),
+            'details' => method_exists($e, 'errors') ? $e->errors() : null,
+            'platform' => 'FCM'
+        ];
+    }
+
+    protected function formatGenericError(\Exception $e, string $deviceToken): array
+    {
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'error_code' => $e->getCode(),
+            'error_type' => 'generic',
+            'device_token' => $deviceToken,
+            'timestamp' => now()->toIso8601String(),
+            'platform' => 'FCM'
+        ];
     }
 }
