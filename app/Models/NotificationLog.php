@@ -8,7 +8,7 @@ class NotificationLog extends Model
 {
     protected $casts = [
         'data' => 'array',
-        'response_data' => 'array'
+        'data' => 'array'
     ];
 
     protected $fillable = [
@@ -19,7 +19,7 @@ class NotificationLog extends Model
         'data',
         'is_sent',
         'error_message',
-        'response_data'
+        'data'
     ];
 
     public function user()

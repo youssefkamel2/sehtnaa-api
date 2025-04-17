@@ -70,7 +70,7 @@ class SendNotificationCampaign implements ShouldQueue
             ]);
             $this->notificationLog->update([
                 'is_sent' => true,
-                'response_data' => $response
+                'data' => $response
             ]);
         } else {
             $error = $response['error'] ?? 'Unknown Firebase error';
@@ -97,7 +97,7 @@ class SendNotificationCampaign implements ShouldQueue
         $this->notificationLog->update([
             'is_sent' => false,
             'error_message' => $e->getMessage(),
-            'response_data' => $response
+            'data' => $response
         ]);
     }
 
