@@ -48,18 +48,32 @@ class SendNotificationCampaign implements ShouldQueue
                 $this->notificationLog->data ?? []
             );
 
-            if (!$response['success']) {
-                $this->logAttempt([
-                    'status' => 'failed',
-                    'reason' => $response['error'] ?? 'firebase_error',
-                    'response' => $response
-                ]);
-                throw new \Exception($response['error'] ?? 'Failed to send notification');
+            // Handle both boolean and array responses
+            if (is_bool($response)) {
+                if (!$response) {
+                    $this->logAttempt([
+                        'status' => 'failed',
+                        'reason' => 'firebase_error',
+                        'response' => ['success' => false]
+                    ]);
+                    throw new \Exception('Failed to send notification');
+                }
+                $responseData = ['success' => true];
+            } else {
+                $responseData = $response;
+                if (!($response['success'] ?? false)) {
+                    $this->logAttempt([
+                        'status' => 'failed',
+                        'reason' => $response['error'] ?? 'firebase_error',
+                        'response' => $response
+                    ]);
+                    throw new \Exception($response['error'] ?? 'Failed to send notification');
+                }
             }
 
             $this->logAttempt([
                 'status' => 'success',
-                'response' => $response
+                'response' => $responseData
             ]);
 
             $this->notificationLog->update([
@@ -71,7 +85,7 @@ class SendNotificationCampaign implements ShouldQueue
                 'status' => 'error',
                 'reason' => $e->getMessage(),
                 'error_trace' => $this->formatTrace($e->getTraceAsString()),
-                'response' => $response ?? null
+                'response' => $responseData ?? null
             ]);
 
             $this->notificationLog->update([
