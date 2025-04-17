@@ -30,8 +30,11 @@ class ComplaintController extends Controller
             // $complaints = Complaint::with(['request', 'user:id,first_name,last_name']);
             // return all complaints
             $complaints = Complaint::with([
-                'request'
-            ]);
+                'request.service',
+                'request.customer.user',
+                'request.assignedProvider.user',
+                'user:id,first_name,last_name'
+            ])->get();
             // $complaints = $complaints->get();
             return $this->success($complaints, 'Complaints fetched successfully');
         } catch (\Exception $e) {
