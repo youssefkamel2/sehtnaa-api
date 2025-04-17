@@ -140,10 +140,6 @@ class UserController extends Controller
     public function sendNotificationCampaign(Request $request)
     {
         try {
-            // Validate admin access
-            if ($request->user()->user_type !== 'admin') {
-                return $this->error('Unauthorized access', 403);
-            }
     
             $validator = Validator::make($request->all(), [
                 'title' => 'required|string|max:255',
