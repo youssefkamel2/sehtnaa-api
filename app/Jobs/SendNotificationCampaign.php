@@ -62,24 +62,25 @@ class SendNotificationCampaign implements ShouldQueue
 
     protected function handleFirebaseResponse($response)
     {
-        $logData = [
-            'status' => is_bool($response) ? ($response ? 'success' : 'failed') : ($response['success'] ? 'success' : 'failed'),
-            'response' => is_array($response) ? $response : ['success' => $response]
-        ];
-
-        if ($logData['status'] === 'success') {
-            $this->logAttempt($logData);
+        if ($response['success']) {
+            $this->logAttempt([
+                'status' => 'success',
+                'response' => $response,
+                'details' => 'Notification sent successfully'
+            ]);
             $this->notificationLog->update([
                 'is_sent' => true,
-                'response_data' => $logData['response']
+                'response_data' => $response
             ]);
         } else {
-            $error = is_array($response) 
-                ? ($response['error'] ?? $response['error_details'] ?? 'Unknown Firebase error')
-                : 'Firebase returned false';
-                
-            $logData['reason'] = $error;
-            $this->logAttempt($logData);
+            $error = $response['error'] ?? 'Unknown Firebase error';
+            $this->logAttempt([
+                'status' => 'failed',
+                'reason' => $error,
+                'response' => $response,
+                'error_code' => $response['error_code'] ?? null,
+                'error_type' => $response['error_type'] ?? null
+            ]);
             throw new \Exception($error);
         }
     }
