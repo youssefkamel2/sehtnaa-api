@@ -7,24 +7,19 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
-{   
+{
     protected function schedule(Schedule $schedule)
     {
         // Process queue jobs
-        $schedule->command('queue:work --stop-when-empty --tries=3')
+        $schedule->command('queue:work --queue=notifications,default --tries=3 --stop-when-empty')
             ->everyMinute()
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/queue-worker.log'))
             ->onSuccess(function () {
-                $output = file_get_contents(storage_path('logs/queue-worker.log'));
-                $processedJobs = substr_count($output, 'Processed:');
-                
-                Log::channel('scheduler')->info("Queue processed successfully. Jobs handled: {$processedJobs}");
-                file_put_contents(storage_path('logs/queue-worker.log'), ''); // Reset log
+                Log::channel('scheduler')->info('Queue processed successfully');
             })
             ->onFailure(function () {
-                $error = file_get_contents(storage_path('logs/queue-worker.log'));
-                Log::channel('scheduler')->error("Queue processing failed. Error: {$error}");
+                Log::channel('scheduler')->error('Queue processing failed');
             });
 
         // Retry failed jobs daily
@@ -46,7 +41,7 @@ class Kernel extends ConsoleKernel
             ->onFailure(function () {
                 Log::channel('scheduler')->error('Telescope pruning failed.');
             });
-    
+
         // Prune Activity Log entries
         $schedule->command('activitylog:clean')
             ->hourly()
@@ -77,7 +72,7 @@ class Kernel extends ConsoleKernel
 
     protected function commands(): void
     {
-        $this->load(__DIR__.'/Commands');
+        $this->load(__DIR__ . '/Commands');
         require base_path('routes/console.php');
     }
 }
