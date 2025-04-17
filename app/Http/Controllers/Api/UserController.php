@@ -149,7 +149,7 @@ class UserController extends Controller
                 'title' => 'required|string|max:255',
                 'body' => 'required|string',
                 'data' => 'nullable|array',
-                'user_type' => 'nullable|in:customer,provider,admin'
+                'user_type' => 'required|in:customer,provider,admin'
             ]);
 
             if ($validator->fails()) {
@@ -216,7 +216,7 @@ class UserController extends Controller
                 return $query->where('title', 'like', '%' . $request->search . '%')
                     ->orWhere('body', 'like', '%' . $request->search . '%');
             });
-            
+
             return $this->success([
                 'campaigns' => $campaigns,
             ], 'Campaigns retrieved successfully');
