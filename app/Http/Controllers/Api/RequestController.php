@@ -25,6 +25,45 @@ class RequestController extends Controller
         $this->firebaseService = $firebaseService;
     }
 
+    // get all requests (for admin)
+    public function getAllRequests()
+    {
+        try {
+            $user = Auth::user();
+            
+            if ($user->user_type !== 'admin') {
+                return $this->error('Unauthorized access', 403);
+            }
+
+            $requests = ServiceRequest::with([
+                'service:id,name,price',
+                'customer.user:id,first_name,last_name,phone,profile_image',
+                'assignedProvider.user:id,first_name,last_name,phone,profile_image',
+                'assignedProvider:id,provider_type,user_id',
+                'feedbacks',
+                'cancellations',
+                'complaints'
+            ])
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($request) {
+                    $formatted = $this->formatRequest($request);
+                    $formatted['customer'] = [
+                        'first_name' => $request->customer->user->first_name,
+                        'last_name' => $request->customer->user->last_name,
+                        'phone' => $request->customer->user->phone,
+                        'profile_image' => $request->customer->user->profile_image
+                    ];
+                    $formatted['complaints_count'] = $request->complaints->count();
+                    $formatted['created_at'] = $request->created_at;
+                    return $formatted;
+                });
+
+            return $this->success($requests, 'Requests fetched successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to fetch requests: ' . $e->getMessage(), 500);
+        }
+    }
     public function getUserRequests() {
         try {
             $user = Auth::user();

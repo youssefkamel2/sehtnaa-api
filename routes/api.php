@@ -54,6 +54,10 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
         Route::get('/', [CustomerController::class, 'getAllCustomers']);
         Route::post('/{id}/toggle-status', [CustomerController::class, 'toggleCustomerStatus']);
     });
+    // requests
+    Route::prefix('requests')->group(function () {
+        Route::get('/', [RequestController::class, 'getAllRequests']);
+    });
 
     // providers 
     Route::prefix('providers')->group(function () {
