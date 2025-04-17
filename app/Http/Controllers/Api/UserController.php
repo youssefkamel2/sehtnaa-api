@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Hash;
 use App\Traits\ResponseTrait;
+use App\Models\NotificationLog;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Hash;
+use App\Jobs\SendNotificationCampaign;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
@@ -135,4 +137,89 @@ class UserController extends Controller
         return $this->success(null, 'Password changed successfully');
     }
     
+    public function sendNotificationCampaign(Request $request)
+    {
+        try {
+            // Validate admin access
+            if ($request->user()->user_type !== 'admin') {
+                return $this->error('Unauthorized access', 403);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => 'required|string|max:255',
+                'body' => 'required|string',
+                'data' => 'nullable|array',
+                'user_type' => 'nullable|in:customer,provider,admin'
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 422);
+            }
+
+            // Generate unique campaign ID
+            $campaignId = 'camp_' . uniqid();
+
+            // Get users query
+            $usersQuery = User::whereNotNull('fcm_token');
+            
+            // Filter by user type if specified
+            if ($request->has('user_type')) {
+                $usersQuery->where('user_type', $request->user_type);
+            }
+
+            // Create notification logs and dispatch jobs
+            $usersQuery->chunk(100, function ($users) use ($request, $campaignId) {
+                foreach ($users as $user) {
+                    $log = NotificationLog::create([
+                        'campaign_id' => $campaignId,
+                        'user_id' => $user->id,
+                        'title' => $request->title,
+                        'body' => $request->body,
+                        'data' => $request->data
+                    ]);
+
+                    SendNotificationCampaign::dispatch($log);
+                }
+            });
+
+            return $this->success([
+                'campaign_id' => $campaignId
+            ], 'Notification campaign started');
+
+        } catch (\Exception $e) {
+            return $this->error('Failed to start notification campaign: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function getCampaignStatus($campaignId)
+    {
+        try {
+            if (auth()->user()->user_type !== 'admin') {
+                return $this->error('Unauthorized access', 403);
+            }
+
+            $stats = NotificationLog::where('campaign_id', $campaignId)
+                ->selectRaw('
+                    COUNT(*) as total,
+                    SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent,
+                    SUM(CASE WHEN is_sent = 0 THEN 1 ELSE 0 END) as failed
+                ')
+                ->first();
+
+            $failedLogs = NotificationLog::where('campaign_id', $campaignId)
+                ->where('is_sent', false)
+                ->whereNotNull('error_message')
+                ->with('user:id,first_name,last_name,email')
+                ->get(['user_id', 'error_message']);
+
+            return $this->success([
+                'campaign_id' => $campaignId,
+                'statistics' => $stats,
+                'failed_deliveries' => $failedLogs
+            ], 'Campaign status retrieved successfully');
+
+        } catch (\Exception $e) {
+            return $this->error('Failed to get campaign status: ' . $e->getMessage(), 500);
+        }
+    }
 }

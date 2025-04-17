@@ -58,6 +58,11 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     Route::prefix('requests')->group(function () {
         Route::get('/', [RequestController::class, 'getAllRequests']);
     });
+    // notifications
+    Route::prefix('notifications')->group(function () {
+        Route::post('/campaign', [UserController::class, 'sendNotificationCampaign']);
+        Route::get('/campaign/{campaignId}', [UserController::class, 'getCampaignStatus']);
+    });
 
     // providers 
     Route::prefix('providers')->group(function () {
