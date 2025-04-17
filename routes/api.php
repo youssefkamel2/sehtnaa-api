@@ -39,7 +39,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
 Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function () {
     Route::get('/', [AdminController::class,'index']);
     Route::post('/create-admin', [AdminController::class, 'createAdmin']);
-    Route::post('/updat-admin', [AdminController::class, 'updateAdmin']);
+    Route::post('/update-admin', [AdminController::class, 'updateAdmin']);
     Route::post('/delete-admin', [AdminController::class, 'deleteAdmin']);
     Route::post('/toggle-status', [AdminController::class, 'toggleStatus']);
     Route::prefix('complaints')->group(function () {
