@@ -11,7 +11,13 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // Process queue jobs
-        $schedule->command('queue:work --queue=notifications,default --tries=3 --stop-when-empty')
+        $schedule->command('queue:work', [
+            '--queue' => 'notifications,default',
+            '--tries' => 3,
+            '--stop-when-empty' => true,
+            '--sleep' => 3,
+            '--timeout' => 60
+        ])
             ->everyMinute()
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/queue-worker.log'))
