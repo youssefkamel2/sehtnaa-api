@@ -7,7 +7,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
-{
+{   
     protected function schedule(Schedule $schedule)
     {
         // Process queue jobs
@@ -16,10 +16,15 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/queue-worker.log'))
             ->onSuccess(function () {
-                Log::channel('scheduler')->info('Queue processed successfully');
+                $output = file_get_contents(storage_path('logs/queue-worker.log'));
+                $processedJobs = substr_count($output, 'Processed:');
+                
+                Log::channel('scheduler')->info("Queue processed successfully. Jobs handled: {$processedJobs}");
+                file_put_contents(storage_path('logs/queue-worker.log'), ''); // Reset log
             })
             ->onFailure(function () {
-                Log::channel('scheduler')->error('Queue processing failed');
+                $error = file_get_contents(storage_path('logs/queue-worker.log'));
+                Log::channel('scheduler')->error("Queue processing failed. Error: {$error}");
             });
 
         // Retry failed jobs daily

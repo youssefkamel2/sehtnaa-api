@@ -13,12 +13,27 @@ class PruneTelescopeLogs extends Command
 
     public function handle()
     {
-        // Delete logs older than 48 hours
-        $cutoff = now()->subHours(48);
-        $deletedRows = DB::table('telescope_entries')->where('created_at', '<', $cutoff)->delete();
+        $this->info("Starting Telescope logs pruning...");
+        Log::channel('scheduler')->info("Initiating Telescope logs pruning");
 
-        // Log the result
-        Log::channel('scheduler')->info("Pruned $deletedRows Telescope logs older than 48 hours.");
-        $this->info("Pruned $deletedRows Telescope logs older than 48 hours.");
+        $cutoff = now()->subHours(48);
+        $countBefore = DB::table('telescope_entries')->count();
+        
+        $deletedRows = DB::table('telescope_entries')
+            ->where('created_at', '<', $cutoff)
+            ->delete();
+
+        $countAfter = DB::table('telescope_entries')->count();
+        
+        $message = sprintf(
+            "Pruned %d Telescope entries (Before: %d, After: %d, Cutoff: %s)",
+            $deletedRows,
+            $countBefore,
+            $countAfter,
+            $cutoff->toDateTimeString()
+        );
+
+        Log::channel('scheduler')->info($message);
+        $this->info($message);
     }
 }
