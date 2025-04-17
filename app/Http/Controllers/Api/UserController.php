@@ -144,31 +144,35 @@ class UserController extends Controller
             if ($request->user()->user_type !== 'admin') {
                 return $this->error('Unauthorized access', 403);
             }
-
+    
             $validator = Validator::make($request->all(), [
                 'title' => 'required|string|max:255',
                 'body' => 'required|string',
                 'data' => 'nullable|array',
                 'user_type' => 'required|in:customer,provider,admin'
             ]);
-
+    
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-
-            // Generate unique campaign ID
-            $campaignId = 'camp_' . uniqid();
-
+    
             // Get users query
             $usersQuery = User::whereNotNull('fcm_token');
             
-            // Filter by user type if specified
-            if ($request->has('user_type')) {
-                $usersQuery->where('user_type', $request->user_type);
+            // Filter by user type
+            $usersQuery->where('user_type', $request->user_type);
+    
+            // Check if any users exist with FCM tokens
+            if (!$usersQuery->exists()) {
+                return $this->error('No users available with FCM tokens for the selected user type', 400);
             }
-
+    
+            // Generate unique campaign ID
+            $campaignId = 'camp_' . uniqid();
+            $usersCount = 0;
+    
             // Create notification logs and dispatch jobs
-            $usersQuery->chunk(100, function ($users) use ($request, $campaignId) {
+            $usersQuery->chunk(100, function ($users) use ($request, $campaignId, &$usersCount) {
                 foreach ($users as $user) {
                     $log = NotificationLog::create([
                         'campaign_id' => $campaignId,
@@ -177,15 +181,18 @@ class UserController extends Controller
                         'body' => $request->body,
                         'data' => $request->data
                     ]);
-
+    
                     SendNotificationCampaign::dispatch($log);
+                    $usersCount++;
                 }
             });
-
+    
             return $this->success([
-                'campaign_id' => $campaignId
-            ], 'Notification campaign started');
-
+                'campaign_id' => $campaignId,
+                'users_count' => $usersCount,
+                'user_type' => $request->user_type
+            ], 'Notification campaign started successfully for '.$usersCount.' users');
+    
         } catch (\Exception $e) {
             return $this->error('Failed to start notification campaign: ' . $e->getMessage(), 500);
         }
