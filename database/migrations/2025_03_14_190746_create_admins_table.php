@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('admins', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->enum('role', ['super_admin', 'admin', 'mod']);
+            $table->enum('role', ['super_admin', 'admin']);
             $table->timestamps();
         });
     }

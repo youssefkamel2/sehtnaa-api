@@ -12,13 +12,10 @@ class Admin extends Model
 
     protected $fillable = ['user_id', 'role'];
 
-    // Define which attributes should be logged
     protected static $logAttributes = ['user_id', 'role'];
 
-    // Log only changed attributes
     protected static $logOnlyDirty = true;
 
-    // Customize the log name
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
@@ -27,7 +24,6 @@ class Admin extends Model
             ->useLogName('admin');
     }
 
-    // Relationships
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -39,7 +35,7 @@ class Admin extends Model
 
         static::deleting(function ($admin) {
             if ($admin->role === 'super_admin') {
-                return false; // Prevent deletion of super admin
+                return false;
             }
         });
     }
