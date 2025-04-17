@@ -89,12 +89,17 @@ Route::prefix('categories')->middleware(['auth:api'])->group(function () {
 });
 
 Route::prefix('services')->middleware(['auth:api'])->group(function () {
+    // Existing service routes...
     Route::get('/', [ServiceController::class, 'index'])->middleware(['role:admin']);
     Route::post('/', [ServiceController::class, 'store'])->middleware(['role:admin']);
     Route::get('/{id}', [ServiceController::class, 'show']);
     Route::post('/{id}', [ServiceController::class, 'update'])->middleware(['role:admin']);
     Route::delete('/{id}', [ServiceController::class, 'destroy'])->middleware(['role:admin']);
     Route::post('/{id}/toggle-status', [ServiceController::class, 'toggleStatus'])->middleware(['role:admin']);
+    // Requirements routes
+    Route::post('/{id}/requirements', [ServiceController::class, 'addRequirement'])->middleware(['role:admin']);
+    Route::post('/requirements/{id}', [ServiceController::class, 'updateRequirement'])->middleware(['role:admin']);
+    Route::delete('/requirements/{id}', [ServiceController::class, 'deleteRequirement'])->middleware(['role:admin']);
 });
 
 // requests

@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Models\Service;
-use App\Traits\ResponseTrait;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+use App\Traits\ResponseTrait;
+use App\Models\ServiceRequirement;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class ServiceController extends Controller
 {
@@ -18,7 +19,7 @@ class ServiceController extends Controller
         try {
             $user = auth()->user();
             
-            $services = Service::with(['category:id,name,icon'])
+            $services = Service::with(['category:id,name,icon', 'requirements'])
                 ->when($user->user_type !== 'admin', function($query) {
                     return $query->where('is_active', true);
                 })
@@ -28,6 +29,25 @@ class ServiceController extends Controller
             return $this->success($services, 'Services fetched successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to fetch services: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function show($id)
+    {
+        try {
+            $service = Service::with(['category:id,name,icon', 'requirements'])->find($id);
+
+            if (!$service) {
+                return $this->error('Service not found', 404);
+            }
+
+            if (!$service->is_active) {
+                return $this->error('Service is not available', 404);
+            }
+
+            return $this->success($service, 'Service details fetched successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to fetch service details: ' . $e->getMessage(), 500);
         }
     }
 
@@ -81,25 +101,6 @@ class ServiceController extends Controller
             return $this->success($service, 'Service created successfully', 201);
         } catch (\Exception $e) {
             return $this->error('Failed to create service: ' . $e->getMessage(), 500);
-        }
-    }
-
-    public function show($id)
-    {
-        try {
-            $service = Service::with(['category:id,name,icon'])->find($id);
-
-            if (!$service) {
-                return $this->error('Service not found', 404);
-            }
-
-            if (!$service->is_active) {
-                return $this->error('Service is not available', 404);
-            }
-
-            return $this->success($service, 'Service details fetched successfully');
-        } catch (\Exception $e) {
-            return $this->error('Failed to fetch service details: ' . $e->getMessage(), 500);
         }
     }
 
@@ -193,6 +194,86 @@ class ServiceController extends Controller
             );
         } catch (\Exception $e) {
             return $this->error('Failed to update service status: ' . $e->getMessage(), 500);
+        }
+    }
+
+    // service requirements 
+    public function addRequirement(Request $request, $serviceId)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|array',
+            'name.en' => 'required|string|max:255',
+            'name.ar' => 'required|string|max:255',
+            'type' => 'required|in:input,file',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        try {
+            $service = Service::find($serviceId);
+            
+            if (!$service) {
+                return $this->error('Service not found', 404);
+            }
+
+            $requirement = $service->requirements()->create([
+                'name' => [
+                    'en' => $request->input('name.en'),
+                    'ar' => $request->input('name.ar')
+                ],
+                'type' => $request->type
+            ]);
+
+            return $this->success($requirement, 'Requirement added successfully', 201);
+        } catch (\Exception $e) {
+            return $this->error('Failed to add requirement: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function updateRequirement(Request $request, $requirementId)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|array',
+            'name.en' => 'required_with:name|string|max:255',
+            'name.ar' => 'required_with:name|string|max:255',
+            'type' => 'sometimes|in:input,file',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        try {
+            $requirement = ServiceRequirement::find($requirementId);
+            
+            if (!$requirement) {
+                return $this->error('Requirement not found', 404);
+            }
+
+            $requirement->update($request->all());
+
+            return $this->success($requirement, 'Requirement updated successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to update requirement: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function deleteRequirement($requirementId)
+    {
+        try {
+            $requirement = ServiceRequirement::find($requirementId);
+            
+            if (!$requirement) {
+                return $this->error('Requirement not found', 404);
+            }
+
+            $requirement->delete();
+
+            return $this->success(null, 'Requirement deleted successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to delete requirement: ' . $e->getMessage(), 500);
         }
     }
 }

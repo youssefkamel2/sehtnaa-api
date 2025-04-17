@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 class Service extends Model
 {
     protected $fillable = [
-        'name', 
-        'description', 
-        'provider_type', 
-        'price', 
+        'name',
+        'description',
+        'provider_type',
+        'price',
         'added_by',
         'category_id',
         'is_active',
@@ -32,6 +32,11 @@ class Service extends Model
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function requirements()
+    {
+        return $this->hasMany(ServiceRequirement::class)->orderBy('created_at');
     }
 
     public function scopeActive($query)
