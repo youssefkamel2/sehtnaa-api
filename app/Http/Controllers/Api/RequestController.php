@@ -40,23 +40,12 @@ class RequestController extends Controller
                 'customer.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
-                'feedbacks:id,user_id,rating,comment,created_at',
-                'complaints:id,user_id,subject,description,status,response,created_at',
+                'feedbacks',
+                'cancellations',
+                'complaints'
             ])
                 ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($request) {
-                    $formatted = $this->formatRequest($request);
-                    $formatted['customer'] = [
-                        'first_name' => $request->customer->user->first_name,
-                        'last_name' => $request->customer->user->last_name,
-                        'phone' => $request->customer->user->phone,
-                        'profile_image' => $request->customer->user->profile_image
-                    ];
-                    $formatted['complaints_count'] = $request->complaints->count();
-                    $formatted['created_at'] = $request->created_at;
-                    return $formatted;
-                });
+                ->get();
 
             return $this->success($requests, 'Requests fetched successfully');
         } catch (\Exception $e) {
