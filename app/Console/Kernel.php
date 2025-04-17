@@ -5,80 +5,170 @@ namespace App\Console;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\DB;
 
 class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule)
     {
-        // Process queue jobs - CORRECTED VERSION
+        // Process queue jobs with detailed logging
         $schedule->command('queue:work', [
             '--queue' => 'notifications,default',
             '--tries' => 3,
             '--sleep' => 3,
             '--timeout' => 60,
-            '--stop-when-empty' // This is now correctly passed as a flag
+            '--stop-when-empty'
         ])
-            ->everyMinute()
-            ->withoutOverlapping()
-            ->appendOutputTo(storage_path('logs/queue-worker.log'))
-            ->onSuccess(function () {
-                Log::channel('scheduler')->info('Queue processed successfully');
-            })
-            ->onFailure(function () {
-                Log::channel('scheduler')->error('Queue processing failed');
-            });
+        ->everyMinute()
+        ->withoutOverlapping()
+        ->appendOutputTo(storage_path('logs/queue-worker.log'))
+        ->onSuccess(function () {
+            $output = file_get_contents(storage_path('logs/queue-worker.log'));
+            $processedJobs = substr_count($output, 'Processed:');
+            $failedJobs = substr_count($output, 'Failed:');
+            
+            Log::channel('scheduler')->info("Queue processed successfully", [
+                'jobs_processed' => $processedJobs,
+                'jobs_failed' => $failedJobs,
+                'last_job' => $this->getLastProcessedJob($output),
+                'execution_time' => $this->getExecutionTime($output)
+            ]);
+            
+            // Clear the log for next run
+            file_put_contents(storage_path('logs/queue-worker.log'), '');
+        })
+        ->onFailure(function () {
+            $error = file_get_contents(storage_path('logs/queue-worker.log'));
+            Log::channel('scheduler')->error('Queue processing failed', [
+                'error_details' => $error
+            ]);
+        });
 
-        // Retry failed jobs daily
+        // Retry failed jobs daily with counts
         $schedule->command('queue:retry all')
             ->daily()
             ->onSuccess(function () {
-                Log::channel('scheduler')->info('Failed jobs retry completed');
+                $count = DB::table('failed_jobs')->count();
+                Log::channel('scheduler')->info('Failed jobs retry completed', [
+                    'jobs_retried' => $count,
+                    'remaining_failed_jobs' => 0
+                ]);
             })
             ->onFailure(function () {
-                Log::channel('scheduler')->error('Failed jobs retry failed');
+                $count = DB::table('failed_jobs')->count();
+                Log::channel('scheduler')->error('Failed jobs retry failed', [
+                    'remaining_failed_jobs' => $count
+                ]);
             });
 
-        // Prune Telescope entries
+        // Prune Telescope entries with count
         $schedule->command('telescope:prune')
             ->hourly()
             ->onSuccess(function () {
-                Log::channel('scheduler')->info('Telescope pruning completed successfully.');
+                $countBefore = DB::table('telescope_entries')->count();
+                $countAfter = DB::table('telescope_entries')
+                    ->where('created_at', '>', now()->subHours(48))
+                    ->count();
+                
+                Log::channel('scheduler')->info('Telescope pruning completed', [
+                    'entries_pruned' => $countBefore - $countAfter,
+                    'entries_remaining' => $countAfter
+                ]);
             })
             ->onFailure(function () {
-                Log::channel('scheduler')->error('Telescope pruning failed.');
+                Log::channel('scheduler')->error('Telescope pruning failed');
             });
 
-        // Prune Activity Log entries
+        // Prune Activity Log entries with count
         $schedule->command('activitylog:clean')
             ->hourly()
             ->onSuccess(function () {
-                Log::channel('scheduler')->info('Activity Log pruning completed successfully.');
+                $count = DB::table('activity_log')
+                    ->where('created_at', '<', now()->subDays(7))
+                    ->count();
+                
+                Log::channel('scheduler')->info('Activity Log pruning completed', [
+                    'entries_cleaned' => $count
+                ]);
             })
             ->onFailure(function () {
-                Log::channel('scheduler')->error('Activity Log pruning failed.');
+                Log::channel('scheduler')->error('Activity Log pruning failed');
             });
 
-        // Monitor queue health
+        // Enhanced queue health monitoring
         $schedule->command('queue:monitor')
             ->everyFiveMinutes()
             ->onSuccess(function () {
-                Log::channel('scheduler')->info('Queue health check completed');
+                $stats = [
+                    'pending_jobs' => DB::table('jobs')->count(),
+                    'failed_jobs' => DB::table('failed_jobs')->count(),
+                    'queue_size' => $this->getRedisQueueSize()
+                ];
+                
+                Log::channel('scheduler')->info('Queue health check completed', $stats);
             });
 
-        // Clean log files (laravel.log and notifications.log) older than 48 hours
+        // Enhanced log cleanup with file details
         $schedule->command('log:clean --keep-last=48')
             ->daily()
             ->onSuccess(function () {
-                Log::channel('scheduler')->info('Log files cleanup completed successfully.');
+                $files = [
+                    'laravel.log' => $this->getLogFileInfo('laravel.log'),
+                    'notifications.log' => $this->getLogFileInfo('notifications.log')
+                ];
+                
+                Log::channel('scheduler')->info('Log files cleanup completed', [
+                    'files_processed' => $files,
+                    'retention_period' => '48 hours'
+                ]);
             })
             ->onFailure(function () {
-                Log::channel('scheduler')->error('Log files cleanup failed.');
+                Log::channel('scheduler')->error('Log files cleanup failed');
             });
     }
 
     protected function commands(): void
     {
-        $this->load(__DIR__ . '/Commands');
+        $this->load(__DIR__.'/Commands');
         require base_path('routes/console.php');
+    }
+
+    // Helper methods
+    
+    protected function getLastProcessedJob(string $output): ?string
+    {
+        preg_match_all('/Processed: (.+)/', $output, $matches);
+        return end($matches[1]) ?: null;
+    }
+
+    protected function getExecutionTime(string $output): ?string
+    {
+        preg_match('/Memory usage: .+ \(([0-9.]+) ms\)/', $output, $matches);
+        return $matches[1] ?? null;
+    }
+
+    protected function getRedisQueueSize(): int
+    {
+        try {
+            return app('redis')->llen(config('queue.connections.redis.queue'));
+        } catch (\Exception $e) {
+            return -1; // indicates error
+        }
+    }
+
+    protected function getLogFileInfo(string $filename): array
+    {
+        $path = storage_path("logs/{$filename}");
+        
+        if (!file_exists($path)) {
+            return ['status' => 'not_found'];
+        }
+        
+        return [
+            'size' => round(filesize($path) / 1024 . ' KB'),
+            'last_modified' => date('Y-m-d H:i:s', filemtime($path)),
+            'status' => 'exists'
+        ];
     }
 }
