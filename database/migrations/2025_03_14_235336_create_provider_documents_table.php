@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('provider_documents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('provider_id')->constrained()->onDelete('cascade');
-            $table->foreignId('required_document_id')->constrained()->onDelete('cascade');
+            $table->foreignId('required_document_id')->nullable()->constrained()->onDelete('cascade');
             $table->string('deleted_document_name')->nullable();
             $table->text('rejection_reason')->nullable();
             $table->string('document_path'); // Path to the uploaded document
