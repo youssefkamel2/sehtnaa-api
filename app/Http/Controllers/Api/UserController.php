@@ -211,15 +211,9 @@ class UserController extends Controller
                 SUM(CASE WHEN is_sent = 0 THEN 1 ELSE 0 END) as failed_count
             ')
             ->groupBy('campaign_id', 'title', 'body', 'data', 'created_at')
-            ->orderBy('created_at', 'desc')
-            ->when($request->has('search'), function($query) use ($request) {
-                return $query->where('title', 'like', '%' . $request->search . '%')
-                    ->orWhere('body', 'like', '%' . $request->search . '%');
-            });
+            ->orderBy('created_at', 'desc');
 
-            return $this->success([
-                'campaigns' => $campaigns,
-            ], 'Campaigns retrieved successfully');
+            return $this->success($campaigns, 'Campaigns retrieved successfully');
 
         } catch (\Exception $e) {
             return $this->error('Failed to get campaigns: ' . $e->getMessage(), 500);
