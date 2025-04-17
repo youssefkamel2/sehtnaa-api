@@ -28,8 +28,10 @@ class ComplaintController extends Controller
     {
         try {
             // $complaints = Complaint::with(['request', 'user:id,first_name,last_name']);
-// return all complaints
-$complaints= Complaint::all();
+            // return all complaints
+            $complaints = Complaint::with([
+                'request'
+            ]);
             // $complaints = $complaints->get();
             return $this->success($complaints, 'Complaints fetched successfully');
         } catch (\Exception $e) {
@@ -78,7 +80,7 @@ $complaints= Complaint::all();
             // Update complaint status and response
             $complaint->status = $request->status;
             $complaint->response = $request->response;
-            
+
             if ($request->status === 'resolved') {
                 $complaint->resolved_at = now();
             }
@@ -104,5 +106,4 @@ $complaints= Complaint::all();
             return $this->error('Failed to update complaint status: ' . $e->getMessage(), 500);
         }
     }
-
 }

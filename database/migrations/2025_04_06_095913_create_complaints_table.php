@@ -16,7 +16,6 @@ return new class extends Migration
             $table->text('description');
             $table->enum('status', ['open', 'in_progress', 'resolved', 'closed'])->default('open');
             $table->text('response')->nullable();
-            $table->foreignId('assigned_admin_id')->nullable()->constrained('admins')->onDelete('set null');
             $table->timestamp('resolved_at')->nullable();
             $table->timestamps();
         });
