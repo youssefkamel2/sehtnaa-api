@@ -139,7 +139,7 @@ class AuthController extends Controller
         }
     }
 
-    // Login remains the same as before
+    // Login 
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -163,7 +163,7 @@ class AuthController extends Controller
             return $this->error('The provided email or password is incorrect.', 401);
         }
 
-        $user = auth()->user();
+        $user = User::with(['admin'])->find(auth()->id());
 
         if ($user->user_type !== $request->user_type) {
             activity()
@@ -242,7 +242,7 @@ class AuthController extends Controller
         ], 'Login successful');
     }
 
-    // Logout remains the same
+    // Logout 
     public function logout()
     {
         try {

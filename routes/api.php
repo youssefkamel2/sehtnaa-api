@@ -39,6 +39,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
 Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function () {
     Route::get('/', [AdminController::class,'index']);
     Route::post('/create-admin', [AdminController::class, 'createAdmin']);
+    Route::post('/updat-admin', [AdminController::class, 'updateAdmin']);
     Route::post('/delete-admin', [AdminController::class, 'deleteAdmin']);
     Route::post('/toggle-status', [AdminController::class, 'toggleStatus']);
     Route::prefix('complaints')->group(function () {
@@ -53,11 +54,11 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
         Route::get('/', [CustomerController::class, 'getAllCustomers']);
         Route::post('/{id}/toggle-status', [CustomerController::class, 'toggleCustomerStatus']);
     });
-    
+
     // providers 
     Route::prefix('providers')->group(function () {
         Route::get('/', [ProviderController::class, 'getAllProviders']);
-        Route::post('/change-status', [ProviderController::class, 'getAllProviders']);
+        Route::post('/change-status', [ProviderController::class, 'changeStatus']);
         Route::post('/approve-document', [ProviderController::class, 'approveDocument']);
         Route::post('/reject-document', [ProviderController::class, 'rejectDocument']);
         Route::post('/add-document', [ProviderController::class, 'addRequiredDocument']);

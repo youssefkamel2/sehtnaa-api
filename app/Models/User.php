@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -13,7 +12,7 @@ use DateTimeInterface;
 
 class User extends Authenticatable implements JWTSubject
 {
-    use SoftDeletes, Notifiable, LogsActivity;
+    use Notifiable, LogsActivity;
 
     protected $fillable = [
         'first_name', 'last_name', 'email', 'phone', 'password', 

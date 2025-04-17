@@ -28,7 +28,6 @@ return new class extends Migration
             $table->string('device_type')->nullable();
             $table->string('profile_image')->nullable();
             $table->date('birth_date')->nullable();
-            $table->softDeletes();
             $table->timestamps();
         });
     }

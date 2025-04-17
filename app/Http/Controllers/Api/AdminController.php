@@ -84,6 +84,57 @@ class AdminController extends Controller
         }
     }
 
+    public function updateAdmin(Request $request)
+    {
+        if (!$this->checkSuperAdmin()) {
+            return $this->error('Only super admins can update admins.', 403);
+        }
+
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => 'required|email|exists:users,email',
+                'first_name' => 'sometimes|string',
+                'last_name' => 'sometimes|string',
+                'phone' => 'sometimes|string|unique:users,phone,' . optional(User::where('email', $request->email)->first())->id,
+                'password' => 'sometimes|string|min:6',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 400);
+            }
+
+            $user = User::where('email', $request->email)->first();
+
+            if (!$user) {
+                return $this->error('Admin not found.', 404);
+            }
+
+            if ($user->user_type !== 'admin') {
+                return $this->error('You can only update admin accounts.', 403);
+            }
+
+            if ($user->admin->role === 'super_admin') {
+                return $this->error('Super admin accounts cannot be modified.', 403);
+            }
+
+            $updateData = array_filter([
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'phone' => $request->phone,
+            ]);
+
+            if ($request->has('password')) {
+                $updateData['password'] = Hash::make($request->password);
+            }
+
+            $user->update($updateData);
+
+            return $this->success($user->load('admin'), 'Admin updated successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to update admin: ' . $e->getMessage(), 500);
+        }
+    }
+
     public function deleteAdmin(Request $request)
     {
         if (!$this->checkSuperAdmin()) {
@@ -91,7 +142,6 @@ class AdminController extends Controller
         }
 
         try {
-
             $validator = Validator::make($request->all(), [
                 'email' => 'required|email|exists:users,email',
             ]);
@@ -114,7 +164,8 @@ class AdminController extends Controller
                 return $this->error('Super admin accounts cannot be deleted.', 403);
             }
 
-            $user->delete();
+            // Delete the admin record first (this will trigger the boot method to delete the user)
+            $user->admin->delete();
 
             return $this->success(null, 'Admin account deleted successfully.');
         } catch (\Exception $e) {

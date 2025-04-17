@@ -37,6 +37,7 @@ class Admin extends Model
             if ($admin->role === 'super_admin') {
                 return false;
             }
+            $admin->user()->delete();
         });
     }
 }
