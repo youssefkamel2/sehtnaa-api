@@ -12,6 +12,8 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+
 
 class AdminController extends Controller
 {
@@ -186,63 +188,6 @@ class AdminController extends Controller
         $user->update(['status' => 'de-active']);
 
         return $this->success(null, 'Admin/moderator account deactivated successfully.');
-    }
-
-    // Approve a provider document
-    public function approveDocument(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'document_id' => 'required|exists:provider_documents,id',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->error($validator->errors()->first(), 400);
-        }
-
-        // Approve the document
-        $document = ProviderDocument::find($request->document_id);
-        $document->update(['status' => 'approved']);
-
-        return $this->success(null, 'Document approved successfully.');
-    }
-
-    // Reject a provider document
-    public function rejectDocument(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'document_id' => 'required|exists:provider_documents,id',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->error($validator->errors()->first(), 400);
-        }
-
-        // Reject the document
-        $document = ProviderDocument::find($request->document_id);
-        $document->update(['status' => 'rejected']);
-
-        return $this->success(null, 'Document rejected successfully.');
-    }
-
-    // add required documents for specific provider type [name, prover_type]
-    public function addRequiredDocument(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string',
-            'provider_type' => 'required|in:individual,organizational',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->error($validator->errors()->first(), 400);
-        }
-
-        // Create the required document
-        RequiredDocument::create([
-            'name' => $request->name,
-            'provider_type' => $request->provider_type,
-        ]);
-
-        return $this->success(null, 'Required document added successfully.');
     }
 
 }

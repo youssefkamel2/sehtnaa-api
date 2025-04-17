@@ -55,9 +55,12 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     // providers 
     Route::prefix('providers')->group(function () {
         Route::get('/', [ProviderController::class, 'getAllProviders']);
-        Route::post('/approve-document', [AdminController::class, 'approveDocument']);
-        Route::post('/reject-document', [AdminController::class, 'rejectDocument']);
-        Route::post('/add-document', [AdminController::class, 'addRequiredDocument']);
+        Route::post('/approve-document', [ProviderController::class, 'approveDocument']);
+        Route::post('/reject-document', [ProviderController::class, 'rejectDocument']);
+        Route::post('/add-document', [ProviderController::class, 'addRequiredDocument']);
+        Route::get('/required-documents', [ProviderController::class, 'getAllRequiredDocuments']);
+        Route::post('/required-documents/{id}', [ProviderController::class, 'updateRequiredDocument']);
+        Route::delete('/required-documents/{id}', [ProviderController::class, 'deleteRequiredDocument']);
     });
 
 });

@@ -12,6 +12,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('provider_id')->constrained()->onDelete('cascade');
             $table->foreignId('required_document_id')->constrained()->onDelete('cascade');
+            $table->string('deleted_document_name')->nullable();
+            $table->text('rejection_reason')->nullable();
             $table->string('document_path'); // Path to the uploaded document
             $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending'); // Document status
             $table->timestamps();

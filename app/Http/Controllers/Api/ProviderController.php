@@ -8,10 +8,11 @@ use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\ProviderDocument;
 use App\Models\RequiredDocument;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class ProviderController extends Controller
 {
@@ -24,9 +25,9 @@ class ProviderController extends Controller
     {
         try {
             $providers = Provider::with([
-                    'user:id,first_name,last_name,email,phone,status',
-                    'documents.requiredDocument:id,name' 
-                ])
+                'user:id,first_name,last_name,email,phone,status',
+                'documents.requiredDocument:id,name'
+            ])
                 ->get()
                 ->groupBy('provider_type');
 
@@ -34,7 +35,6 @@ class ProviderController extends Controller
                 'individual' => $providers->get('individual', []),
                 'organizational' => $providers->get('organizational', [])
             ], 'Providers retrieved successfully');
-
         } catch (\Exception $e) {
             Log::error('ProviderController::getAllProviders - ' . $e->getMessage());
             return $this->error('Failed to retrieve providers. Please try again later.', 500);
@@ -59,7 +59,7 @@ class ProviderController extends Controller
             }
 
             $user = User::where('email', $request->email)->firstOrFail();
-            
+
             if (!$user->provider) {
                 Log::warning('Provider not found for user', ['user_id' => $user->id]);
                 return $this->error('Provider account not found.', 404);
@@ -107,7 +107,6 @@ class ProviderController extends Controller
             ]);
 
             return $this->success(null, 'Document uploaded successfully. Waiting for admin approval.');
-
         } catch (\Exception $e) {
             Log::error('ProviderController::uploadDocument - ' . $e->getMessage());
             return $this->error('Failed to upload document. Please try again.', 500);
@@ -129,7 +128,7 @@ class ProviderController extends Controller
             }
 
             $user = User::where('email', $request->email)->firstOrFail();
-            
+
             if (!$user->provider) {
                 return $this->error('Provider account not found.', 404);
             }
@@ -139,7 +138,6 @@ class ProviderController extends Controller
                 ->get();
 
             return $this->success($documents, 'Documents retrieved successfully');
-
         } catch (\Exception $e) {
             Log::error('ProviderController::listDocuments - ' . $e->getMessage());
             return $this->error('Failed to retrieve documents. Please try again.', 500);
@@ -161,7 +159,7 @@ class ProviderController extends Controller
             }
 
             $user = User::where('email', $request->email)->firstOrFail();
-            
+
             if (!$user->provider) {
                 return $this->error('Provider account not found.', 404);
             }
@@ -172,7 +170,6 @@ class ProviderController extends Controller
 
             $response = $this->calculateDocumentStatus($requiredDocuments, $uploadedDocuments);
             return $this->success($response, 'Document status retrieved successfully');
-
         } catch (\Exception $e) {
             Log::error('ProviderController::documentStatus - ' . $e->getMessage());
             return $this->error('Failed to retrieve document status. Please try again.', 500);
@@ -194,7 +191,7 @@ class ProviderController extends Controller
             }
 
             $user = User::where('email', $request->email)->firstOrFail();
-            
+
             if ($user->user_type !== 'provider') {
                 return $this->error('The provided email does not belong to a provider.', 400);
             }
@@ -212,10 +209,186 @@ class ProviderController extends Controller
                 $remainingDocuments->values()->all(),
                 'Remaining required documents retrieved successfully'
             );
-
         } catch (\Exception $e) {
             Log::error('ProviderController::getRequiredDocuments - ' . $e->getMessage());
             return $this->error('Failed to retrieve required documents. Please try again.', 500);
+        }
+    }
+
+    // Approve a provider document
+    /**
+     * Approve a provider document and check if provider should be activated
+     */
+    public function approveDocument(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'document_id' => 'required|exists:provider_documents,id',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 400);
+            }
+
+            DB::beginTransaction();
+
+            // Approve the document
+            $document = ProviderDocument::findOrFail($request->document_id);
+            $document->update([
+                'status' => 'approved',
+                'rejection_reason' => null // Clear any previous rejection reason
+            ]);
+
+            $provider = $document->provider;
+            $user = $provider->user;
+
+            // Check if all required documents are approved
+            $this->checkAndUpdateProviderStatus($provider, $user);
+
+            DB::commit();
+
+            return $this->success(null, 'Document approved successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('ProviderController::approveDocument - ' . $e->getMessage());
+            return $this->error('Failed to approve document', 500);
+        }
+    }
+
+    /**
+     * Reject a provider document with reason
+     */
+    public function rejectDocument(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'document_id' => 'required|exists:provider_documents,id',
+                'rejection_reason' => 'required|string|max:500',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 400);
+            }
+
+            // Reject the document with reason
+            $document = ProviderDocument::findOrFail($request->document_id);
+            $document->update([
+                'status' => 'rejected',
+                'rejection_reason' => $request->rejection_reason
+            ]);
+
+            // Update provider status to rejected if not already
+            $provider = $document->provider;
+            if ($provider->user->status !== 'rejected') {
+                $provider->user()->update(['status' => 'rejected']);
+            }
+
+            return $this->success(null, 'Document rejected successfully.');
+        } catch (\Exception $e) {
+            Log::error('ProviderController::rejectDocument - ' . $e->getMessage());
+            return $this->error('Failed to reject document', 500);
+        }
+    }
+
+    /**
+     * Helper method to check and update provider status
+     */
+    protected function checkAndUpdateProviderStatus($provider, $user)
+    {
+        $requiredDocuments = RequiredDocument::where('provider_type', $provider->provider_type)->get();
+        $uploadedDocuments = $provider->documents;
+
+        $allApproved = true;
+        $hasMissing = false;
+
+        foreach ($requiredDocuments as $requiredDoc) {
+            $uploadedDoc = $uploadedDocuments->where('required_document_id', $requiredDoc->id)->first();
+
+            if (!$uploadedDoc || $uploadedDoc->status !== 'approved') {
+                $allApproved = false;
+            }
+
+            if (!$uploadedDoc) {
+                $hasMissing = true;
+            }
+        }
+
+        if ($allApproved && !$hasMissing) {
+            $user->update(['status' => 'active']);
+            Log::info('Provider activated', ['provider_id' => $provider->id]);
+        }
+    }
+
+    public function getAllRequiredDocuments(Request $request)
+    {
+        try {
+            $documents = RequiredDocument::all();
+            return $this->success($documents, 'Required documents retrieved successfully');
+        } catch (\Exception $e) {
+            Log::error('ProviderController::getAllRequiredDocuments - ' . $e->getMessage());
+            return $this->error('Failed to retrieve required documents', 500);
+        }
+    }
+
+    // add required documents for specific provider type [name, prover_type]
+    public function addRequiredDocument(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string',
+            'provider_type' => 'required|in:individual,organizational',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 400);
+        }
+
+        // Create the required document
+        RequiredDocument::create([
+            'name' => $request->name,
+            'provider_type' => $request->provider_type,
+        ]);
+
+        return $this->success(null, 'Required document added successfully.');
+    }
+    public function updateRequiredDocument(Request $request, $id)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'name' => 'sometimes|string|max:255',
+                'provider_type' => 'sometimes|in:individual,organizational'
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 400);
+            }
+
+            $document = RequiredDocument::findOrFail($id);
+            $document->update($request->only(['name', 'provider_type']));
+
+            return $this->success($document, 'Required document updated successfully');
+        } catch (\Exception $e) {
+            Log::error('ProviderController::updateRequiredDocument - ' . $e->getMessage());
+            return $this->error('Failed to update required document', 500);
+        }
+    }
+    public function deleteRequiredDocument($id)
+    {
+        try {
+            $document = RequiredDocument::findOrFail($id);
+
+            // Update related provider documents to store the document name
+            ProviderDocument::where('required_document_id', $id)
+                ->update([
+                    'deleted_document_name' => $document->name,
+                    'required_document_id' => null
+                ]);
+
+            $document->delete();
+
+            return $this->success(null, 'Required document deleted successfully');
+        } catch (\Exception $e) {
+            Log::error('ProviderController::deleteRequiredDocument - ' . $e->getMessage());
+            return $this->error('Failed to delete required document', 500);
         }
     }
 
@@ -238,6 +411,7 @@ class ProviderController extends Controller
                 'required_document_id' => $requiredDoc->id,
                 'document_name' => $requiredDoc->name,
                 'status' => $uploadedDoc->status ?? 'missing',
+                'rejection_reason' => $uploadedDoc->rejection_reason ?? null,
             ];
 
             if ($uploadedDoc) {
