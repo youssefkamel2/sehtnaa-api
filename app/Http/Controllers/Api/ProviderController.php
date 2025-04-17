@@ -134,7 +134,7 @@ class ProviderController extends Controller
             }
 
             $documents = $user->provider->documents()
-                ->with(['requiredDocument:id,name,description'])
+                ->with(['requiredDocument:id,name'])
                 ->get();
 
             return $this->success($documents, 'Documents retrieved successfully');
