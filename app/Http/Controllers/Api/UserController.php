@@ -215,9 +215,8 @@ class UserController extends Controller
             ->when($request->has('search'), function($query) use ($request) {
                 return $query->where('title', 'like', '%' . $request->search . '%')
                     ->orWhere('body', 'like', '%' . $request->search . '%');
-            })
-            ->paginate(10);
-
+            });
+            
             return $this->success([
                 'campaigns' => $campaigns,
             ], 'Campaigns retrieved successfully');
