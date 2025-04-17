@@ -28,34 +28,38 @@ class SendNotificationCampaign implements ShouldQueue
             $user = $this->notificationLog->user;
             
             if (!$user->fcm_token) {
-                $this->logNotification('warning', 'Notification skipped - No FCM token', [
+                $this->logAttempt([
                     'status' => 'skipped',
-                    'reason' => 'missing_token'
+                    'reason' => 'missing_token',
+                    'response' => null
                 ]);
                 throw new \Exception('User has no FCM token');
             }
 
-            $this->logNotification('info', 'Notification attempt started', [
-                'status' => 'attempting'
+            $this->logAttempt([
+                'status' => 'start',
+                'response' => null
             ]);
 
-            $sent = $firebaseService->sendToDevice(
+            $response = $firebaseService->sendToDevice(
                 $user->fcm_token,
                 $this->notificationLog->title,
                 $this->notificationLog->body,
                 $this->notificationLog->data ?? []
             );
 
-            if (!$sent) {
-                $this->logNotification('error', 'Firebase notification failed', [
+            if (!$response['success']) {
+                $this->logAttempt([
                     'status' => 'failed',
-                    'reason' => 'firebase_error'
+                    'reason' => $response['error'] ?? 'firebase_error',
+                    'response' => $response
                 ]);
-                throw new \Exception('Failed to send notification');
+                throw new \Exception($response['error'] ?? 'Failed to send notification');
             }
 
-            $this->logNotification('info', 'Firebase notification sent successfully', [
-                'status' => 'success'
+            $this->logAttempt([
+                'status' => 'success',
+                'response' => $response
             ]);
 
             $this->notificationLog->update([
@@ -63,9 +67,11 @@ class SendNotificationCampaign implements ShouldQueue
             ]);
 
         } catch (\Exception $e) {
-            $this->logNotification('error', $e->getMessage(), [
+            $this->logAttempt([
                 'status' => 'error',
-                'error_trace' => $this->formatTrace($e->getTraceAsString())
+                'reason' => $e->getMessage(),
+                'error_trace' => $this->formatTrace($e->getTraceAsString()),
+                'response' => $response ?? null
             ]);
 
             $this->notificationLog->update([
@@ -75,37 +81,37 @@ class SendNotificationCampaign implements ShouldQueue
         }
     }
 
-    protected function logNotification($level, $message, array $context = [])
+    protected function logAttempt(array $context = [])
     {
-        try {
-            $baseContext = [
-                'campaign_id' => $this->notificationLog->campaign_id,
-                'user_id' => $this->notificationLog->user->id ?? null,
-                'fcm_token' => $this->notificationLog->user->fcm_token ?? null,
+        $logData = [
+            'timestamp' => now()->toIso8601String(),
+            'campaign' => [
+                'id' => $this->notificationLog->campaign_id,
                 'title' => $this->notificationLog->title,
-                'timestamp' => now()->toIso8601String()
-            ];
+                'body' => $this->notificationLog->body
+            ],
+            'user' => [
+                'id' => $this->notificationLog->user->id ?? null,
+                'fcm_token' => $this->notificationLog->user->fcm_token ?? null
+            ],
+            'attempt' => $context
+        ];
 
-            // Try notifications channel first, fallback to default if it fails
-            try {
-                Log::channel('notifications')->{$level}($message, array_merge($baseContext, $context));
-            } catch (\Exception $e) {
-                Log::{$level}($message, array_merge($baseContext, $context, [
-                    'logging_error' => $e->getMessage()
-                ]));
-            }
-        } catch (\Exception $e) {
-            // Last resort fallback
-            Log::error('Failed to log notification', [
-                'error' => $e->getMessage(),
-                'original_message' => $message
-            ]);
-        }
+        Log::channel('notifications')->info(
+            sprintf(
+                '[Campaign: %s] [User: %s] [Status: %s] %s',
+                $this->notificationLog->campaign_id,
+                $this->notificationLog->user->id ?? 'unknown',
+                $context['status'],
+                $context['reason'] ?? ''
+            ),
+            $logData
+        );
     }
 
     protected function formatTrace($trace)
     {
         $lines = explode("\n", $trace);
-        return array_slice($lines, 0, 5); // Return only first 5 lines of trace
+        return array_slice($lines, 0, 5);
     }
 }
