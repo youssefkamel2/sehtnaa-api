@@ -27,9 +27,8 @@ class ComplaintController extends Controller
     public function index()
     {
         try {
-            $complaints = Complaint::with(['request', 'user:id,first_name,last_name'])
-                ->orderBy('created_at', 'desc');
-                
+            $complaints = Complaint::with(['request', 'user:id,first_name,last_name']);
+                            
             return $this->success($complaints, 'Complaints fetched successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to fetch complaints: ' . $e->getMessage(), 500);
