@@ -27,10 +27,9 @@ class ComplaintController extends Controller
     public function index()
     {
         try {
-            // $complaints = Complaint::with(['request', 'user:id,first_name,last_name']);
             // return all complaints
             $complaints = Complaint::with([
-                'request.service',
+                'request.service:name',
                 'request.assignedProvider.user:id,first_name,last_name',
                 'user:id,first_name,last_name'
             ])->get();
