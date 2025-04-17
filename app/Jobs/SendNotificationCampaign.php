@@ -77,15 +77,30 @@ class SendNotificationCampaign implements ShouldQueue
 
     protected function logNotification($level, $message, array $context = [])
     {
-        $baseContext = [
-            'campaign_id' => $this->notificationLog->campaign_id,
-            'user_id' => $this->notificationLog->user->id ?? null,
-            'fcm_token' => $this->notificationLog->user->fcm_token ?? null,
-            'title' => $this->notificationLog->title,
-            'timestamp' => now()->toIso8601String()
-        ];
+        try {
+            $baseContext = [
+                'campaign_id' => $this->notificationLog->campaign_id,
+                'user_id' => $this->notificationLog->user->id ?? null,
+                'fcm_token' => $this->notificationLog->user->fcm_token ?? null,
+                'title' => $this->notificationLog->title,
+                'timestamp' => now()->toIso8601String()
+            ];
 
-        Log::channel('notifications')->{$level}($message, array_merge($baseContext, $context));
+            // Try notifications channel first, fallback to default if it fails
+            try {
+                Log::channel('notifications')->{$level}($message, array_merge($baseContext, $context));
+            } catch (\Exception $e) {
+                Log::{$level}($message, array_merge($baseContext, $context, [
+                    'logging_error' => $e->getMessage()
+                ]));
+            }
+        } catch (\Exception $e) {
+            // Last resort fallback
+            Log::error('Failed to log notification', [
+                'error' => $e->getMessage(),
+                'original_message' => $message
+            ]);
+        }
     }
 
     protected function formatTrace($trace)
