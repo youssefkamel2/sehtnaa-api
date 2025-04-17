@@ -60,7 +60,8 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     });
     // notifications
     Route::prefix('notifications')->group(function () {
-        Route::post('/campaign', [UserController::class, 'sendNotificationCampaign']);
+        Route::get('campaigns', [UserController::class, 'getCampaigns']);
+        Route::post('/campaigns', [UserController::class, 'sendNotificationCampaign']);
         Route::get('/campaign/{campaignId}', [UserController::class, 'getCampaignStatus']);
     });
 

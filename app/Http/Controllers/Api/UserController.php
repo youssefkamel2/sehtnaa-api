@@ -190,7 +190,42 @@ class UserController extends Controller
             return $this->error('Failed to start notification campaign: ' . $e->getMessage(), 500);
         }
     }
+    public function getCampaigns(Request $request)
+    {
+        try {
+            if (auth()->user()->user_type !== 'admin') {
+                return $this->error('Unauthorized access', 403);
+            }
 
+            // Get unique campaigns with their latest information
+            $campaigns = NotificationLog::select(
+                'campaign_id',
+                'title',
+                'body',
+                'data',
+                'created_at'
+            )
+            ->selectRaw('
+                COUNT(*) as total_notifications,
+                SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count,
+                SUM(CASE WHEN is_sent = 0 THEN 1 ELSE 0 END) as failed_count
+            ')
+            ->groupBy('campaign_id', 'title', 'body', 'data', 'created_at')
+            ->orderBy('created_at', 'desc')
+            ->when($request->has('search'), function($query) use ($request) {
+                return $query->where('title', 'like', '%' . $request->search . '%')
+                    ->orWhere('body', 'like', '%' . $request->search . '%');
+            })
+            ->paginate(10);
+
+            return $this->success([
+                'campaigns' => $campaigns,
+            ], 'Campaigns retrieved successfully');
+
+        } catch (\Exception $e) {
+            return $this->error('Failed to get campaigns: ' . $e->getMessage(), 500);
+        }
+    }
     public function getCampaignStatus($campaignId)
     {
         try {
