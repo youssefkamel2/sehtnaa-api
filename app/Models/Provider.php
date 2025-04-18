@@ -37,4 +37,6 @@ class Provider extends Model
     {
         return $this->hasMany(ProviderDocument::class);
     }
+
+    
 }

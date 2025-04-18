@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ProviderController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\FirestoreTestController;
 use App\Http\Controllers\Api\ResetPasswordController;
 use App\Http\Controllers\Api\TestNotificationController;
 
@@ -28,12 +29,14 @@ Route::prefix('reset-password')->group(function () {
     Route::post('/reset', [ResetPasswordController::class, 'resetPassword']);
 });
 
-// Provider routes
+// Provider 
 Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::post('/upload-document', [ProviderController::class, 'uploadDocument']);
     Route::post('/documents', [ProviderController::class, 'listDocuments']);
     Route::post('/document-status', [ProviderController::class, 'documentStatus']);
     Route::post('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
+    Route::post('/accept/{requestId}', [ProviderController::class, 'acceptRequest'])->middleware(['auth:api']);
+
 });
 
 Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function () {
@@ -120,6 +123,7 @@ Route::prefix('services')->middleware(['auth:api'])->group(function () {
 // requests
 Route::prefix('requests')->middleware(['auth:api'])->group(function () {
     Route::get('/', [RequestController::class, 'getUserRequests']);
+    Route::post('/', [RequestController::class, 'createRequest']);
     Route::get('/{id}', [RequestController::class, 'getRequestDetails']);
     Route::post('/{id}/cancel', [RequestController::class, 'cancelRequest']);
     Route::post('/{id}/feedback', [RequestController::class, 'submitFeedback']);
@@ -133,4 +137,3 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
 Route::middleware('auth:api')->group(function () {
     Route::post('/send-test-notification', [TestNotificationController::class, 'sendTestNotification']);
 });
-

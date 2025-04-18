@@ -27,31 +27,26 @@ class RequestsTableSeeder extends Seeder
         $requests = [
             [
                 'phone' => '123456789',
-                'address' => '123 Main St, Cairo, Egypt',
                 'status' => 'pending',
                 'additional_info' => 'Need weekly visits',
             ],
             [
                 'phone' => '987654321',
-                'address' => '456 Garden Ave, Alexandria, Egypt',
                 'status' => 'accepted',
                 'additional_info' => 'Urgent care needed',
             ],
             [
                 'phone' => '555123456',
-                'address' => '789 Palm St, Luxor, Egypt',
                 'status' => 'completed',
                 'additional_info' => 'Regular checkup',
             ],
             [
                 'phone' => '111222333',
-                'address' => '321 Desert Rd, Aswan, Egypt',
                 'status' => 'cancelled',
                 'additional_info' => 'No longer needed',
             ],
             [
                 'phone' => '444555666',
-                'address' => '654 Mountain View, Sharm El Sheikh, Egypt',
                 'status' => 'accepted',
                 'additional_info' => 'Post-surgery care',
             ]

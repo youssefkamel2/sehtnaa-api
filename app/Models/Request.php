@@ -12,7 +12,7 @@ class Request extends Model
     protected $fillable = [
         'customer_id', 'service_id', 'phone', 'address', 'latitude', 'longitude',
         'additional_info', 'status', 'assigned_provider_id', 'scheduled_at',
-        'started_at', 'completed_at'
+        'started_at', 'completed_at', 'gender'
     ];
 
     protected $casts = [
@@ -71,6 +71,23 @@ class Request extends Model
     {
         return Attribute::make(
             get: fn (string $value) => str_replace('_', ' ', $value),
+        );
+    }
+
+    public function requirements()
+    {
+        return $this->hasMany(RequestRequirement::class);
+    }
+
+    public function serviceRequirements()
+    {
+        return $this->hasManyThrough(
+            ServiceRequirement::class,
+            Service::class,
+            'id', // Foreign key on services table
+            'service_id', // Foreign key on service_requirements table
+            'service_id', // Local key on requests table
+            'id' // Local key on services table
         );
     }
 }

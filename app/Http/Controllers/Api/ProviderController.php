@@ -13,10 +13,224 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use App\Models\Request as ServiceRequest;
+use Illuminate\Support\Facades\Auth;
+use App\Services\FirestoreService;
+use App\Services\FirebaseService;
 
 class ProviderController extends Controller
 {
     use ResponseTrait;
+
+    protected $firebaseService;
+    protected $firestoreService;
+
+    public function __construct(FirebaseService $firebaseService, FirestoreService $firestoreService)
+    {
+        $this->firebaseService = $firebaseService;
+        $this->firestoreService = $firestoreService;
+    }
+
+    // accept request
+    /**
+     * Accept a service request
+     */
+    public function acceptRequest(Request $request, $requestId)
+    {
+        try {
+            $provider = Auth::user()->provider;
+
+            if (!$provider) {
+                return $this->error('Provider account not found', 404);
+            }
+
+            DB::beginTransaction();
+
+            // Get and validate the request
+            $serviceRequest = ServiceRequest::with(['customer.user', 'service'])
+                ->where('status', 'pending')
+                ->find($requestId);
+
+            if (!$serviceRequest) {
+                return $this->error('Request not found or already accepted', 404);
+            }
+
+            // Update request status and assign provider
+            $serviceRequest->update([
+                'status' => 'accepted',
+                'assigned_provider_id' => $provider->id,
+                'started_at' => now()
+            ]);
+
+            // Send notification to customer
+            $this->sendRequestAcceptedNotification($serviceRequest, $provider);
+
+            // Send real-time update to customer
+            $this->sendRequestAcceptedRealTimeUpdate($serviceRequest, $provider);
+
+            DB::commit();
+
+            return $this->success([
+                'request_id' => $serviceRequest->id,
+                'status' => 'accepted',
+                'provider_id' => $provider->id
+            ], 'Request accepted successfully');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('ProviderController::acceptRequest - ' . $e->getMessage());
+            return $this->error('Failed to accept request: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Send notification to customer about accepted request
+     */
+    protected function sendRequestAcceptedNotification(ServiceRequest $serviceRequest, Provider $provider)
+    {
+        try {
+            $customer = $serviceRequest->customer->user;
+
+            if (empty($customer->fcm_token)) {
+                Log::channel('fcm_errors')->warning('No FCM token for customer', [
+                    'customer_id' => $customer->id,
+                    'request_id' => $serviceRequest->id
+                ]);
+                return false;
+            }
+
+            $notificationData = [
+                'type' => 'request_accepted',
+                'request_id' => $serviceRequest->id,
+                'provider_id' => $provider->id,
+                'provider_name' => $provider->user->name ?? 'Provider',
+                'service_name' => $serviceRequest->service->name['en'] ?? $serviceRequest->service->name,
+                'timestamp' => now()->toDateTimeString()
+            ];
+
+            $response = $this->firebaseService->sendToDevice(
+                $customer->fcm_token,
+                'Request Accepted',
+                'Your request has been accepted by a provider',
+                $notificationData
+            );
+
+            if (!isset($response['success']) || $response['success'] === 0) {
+                throw new \Exception($response['results'][0]['error'] ?? 'Unknown FCM error');
+            }
+
+            Log::channel('fcm_errors')->info('Request acceptance notification sent', [
+                'request_id' => $serviceRequest->id,
+                'customer_id' => $customer->id,
+                'provider_id' => $provider->id,
+                'response' => $response
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::channel('fcm_errors')->error('Failed to send request acceptance notification', [
+                'request_id' => $serviceRequest->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Send real-time update to customer via Firestore
+     */
+    protected function sendRequestAcceptedRealTimeUpdate(ServiceRequest $serviceRequest, Provider $provider)
+    {
+        try {
+            $customerId = $serviceRequest->customer_id;
+            $documentId = 'accepted_' . $serviceRequest->id;
+
+            $providerData = [
+                'provider_id' => $provider->id,
+                'name' => $provider->user->name ?? 'Provider',
+                'phone' => $provider->user->phone ?? '',
+                'profile_image' => $provider->user->profile_image ?? '',
+                'provider_type' => $provider->provider_type,
+                'rating' => $provider->average_rating ?? 0,
+                'distance' => $this->calculateDistance(
+                    $serviceRequest->latitude,
+                    $serviceRequest->longitude,
+                    $provider->user->latitude,
+                    $provider->user->longitude
+                ) . ' km'
+            ];
+
+            $firestoreData = [
+                'request_id' => (string) $serviceRequest->id,
+                'status' => 'accepted',
+                'provider' => $providerData,
+                'accepted_at' => now()->toDateTimeString(),
+                'service_name' => $serviceRequest->service->name['en'] ?? $serviceRequest->service->name,
+                'expected_time' => $this->calculateExpectedTime($serviceRequest, $provider)
+            ];
+
+            $result = $this->firestoreService->createDocument(
+                'customer_requests/' . $customerId . '/updates',
+                $documentId,
+                $firestoreData
+            );
+
+            Log::channel('firestore')->info('Request acceptance real-time update sent', [
+                'request_id' => $serviceRequest->id,
+                'customer_id' => $customerId,
+                'data' => $firestoreData,
+                'response' => $result
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::channel('firestore_errors')->error('Failed to send real-time acceptance update', [
+                'request_id' => $serviceRequest->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Calculate expected completion time (example implementation)
+     */
+    protected function calculateExpectedTime(ServiceRequest $serviceRequest, Provider $provider)
+    {
+        // This is a simplified example - adjust based on your business logic
+        $baseTime = 30; // minutes
+        $distance = $this->calculateDistance(
+            $serviceRequest->latitude,
+            $serviceRequest->longitude,
+            $provider->user->latitude,
+            $provider->user->longitude
+        );
+
+        $travelTime = $distance * 2; // 2 minutes per km
+        return now()->addMinutes($baseTime + $travelTime)->toDateTimeString();
+    }
+
+    /**
+     * Reuse the distance calculation from RequestController
+     */
+    protected function calculateDistance($lat1, $lon1, $lat2, $lon2)
+    {
+        $earthRadius = 6371;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+        $a = sin($dLat / 2) * sin($dLat / 2) +
+            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+            sin($dLon / 2) * sin($dLon / 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        return round($earthRadius * $c, 2);
+    }
+
+
+
+
+
+
 
     public function getAllProviders(Request $request)
     {
@@ -52,7 +266,7 @@ class ProviderController extends Controller
             }
 
             $provider = Provider::with('user')->find($request->provider_id);
-            
+
             if (!$provider) {
                 return $this->error('Provider not found', 404);
             }
@@ -65,7 +279,6 @@ class ProviderController extends Controller
                 'provider_id' => $provider->id,
                 'status' => $request->status
             ], 'Provider status updated successfully');
-            
         } catch (\Exception $e) {
             Log::error('ProviderController::changeStatus - ' . $e->getMessage());
             return $this->error('Failed to update provider status', 500);
@@ -383,7 +596,8 @@ class ProviderController extends Controller
             return $this->error('Failed to update required document', 500);
         }
     }
-    public function deleteRequiredDocument($id){
+    public function deleteRequiredDocument($id)
+    {
         try {
             $document = RequiredDocument::find($id);
 

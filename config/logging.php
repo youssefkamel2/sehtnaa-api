@@ -71,6 +71,24 @@ return [
             'permission' => 0664,
         ],
 
+        'firestore' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/firestore.log'),
+            'level' => 'debug',
+        ],
+        
+        'firestore_errors' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/firestore_errors.log'),
+            'level' => 'debug',
+        ],
+        
+        'fcm_errors' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/fcm_errors.log'),
+            'level' => 'debug',
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
