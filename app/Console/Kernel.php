@@ -89,17 +89,17 @@ class Kernel extends ConsoleKernel
             });
 
         // Enhanced queue health monitoring
-        $schedule->command('queue:monitor')
-            ->everyFiveMinutes()
-            ->onSuccess(function () {
-                $stats = [
-                    'pending_jobs' => DB::table('jobs')->count(),
-                    'failed_jobs' => DB::table('failed_jobs')->count(),
-                    'queue_size' => $this->getRedisQueueSize()
-                ];
+        // $schedule->command('queue:monitor')
+        //     ->everyFiveMinutes()
+        //     ->onSuccess(function () {
+        //         $stats = [
+        //             'pending_jobs' => DB::table('jobs')->count(),
+        //             'failed_jobs' => DB::table('failed_jobs')->count(),
+        //             'queue_size' => $this->getRedisQueueSize()
+        //         ];
                 
-                Log::channel('scheduler')->info('Queue health check completed', $stats);
-            });
+        //         Log::channel('scheduler')->info('Queue health check completed', $stats);
+        //     });
 
         // Enhanced log cleanup with file details
         $schedule->command('log:clean --keep-last=48')
