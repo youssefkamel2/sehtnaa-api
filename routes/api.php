@@ -12,9 +12,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ProviderController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\FirestoreTestController;
 use App\Http\Controllers\Api\ResetPasswordController;
-use App\Http\Controllers\Api\TestNotificationController;
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -65,7 +63,7 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
     Route::prefix('notifications')->group(function () {
         Route::get('campaigns', [UserController::class, 'getCampaigns']);
         Route::post('/campaigns', [UserController::class, 'sendNotificationCampaign']);
-        Route::get('/campaign/{campaignId}', [UserController::class, 'getCampaignStatus']);
+        // Route::get('/campaign/{campaignId}', [UserController::class, 'getCampaignStatus']);
     });
 
     // providers 
@@ -131,9 +129,3 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
     Route::get('/{id}/complaints', [RequestController::class, 'getRequestComplaints']);
 });
 
-
-
-
-Route::middleware('auth:api')->group(function () {
-    Route::post('/send-test-notification', [TestNotificationController::class, 'sendTestNotification']);
-});

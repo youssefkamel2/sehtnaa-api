@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\NotificationLog;
+use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
@@ -136,85 +137,117 @@ class UserController extends Controller
 
         return $this->success(null, 'Password changed successfully');
     }
-    
+
     public function sendNotificationCampaign(Request $request)
     {
         try {
-    
             $validator = Validator::make($request->all(), [
                 'title' => 'required|string|max:255',
                 'body' => 'required|string',
                 'data' => 'nullable|array',
-                'user_type' => 'required|in:customer,provider,admin'
+                'user_type' => 'required|in:customer,provider,admin',
+                'schedule_at' => 'nullable|date|after:now'
             ]);
-    
+
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-    
-            // Get users query
-            $usersQuery = User::whereNotNull('fcm_token');
-            
-            // Filter by user type
-            $usersQuery->where('user_type', $request->user_type);
-    
-            // Check if any users exist with FCM tokens
-            if (!$usersQuery->exists()) {
+
+            $campaignId = 'camp_' . uniqid();
+            $userType = $request->user_type;
+            $usersCount = 0;
+
+            // Get users in batches to prevent memory issues
+            User::where('user_type', $userType)
+                ->whereNotNull('fcm_token')
+                ->select(['id', 'user_type', 'fcm_token'])
+                ->chunk(200, function ($users) use ($request, $campaignId, $userType, &$usersCount) {
+                    $logs = [];
+                    $now = now();
+
+                    foreach ($users as $user) {
+                        $logs[] = [
+                            'campaign_id' => $campaignId,
+                            'user_id' => $user->id,
+                            'user_type' => $userType,
+                            'title' => $request->title,
+                            'body' => $request->body,
+                            'data' => $request->data,
+                            'device_token' => $user->fcm_token,
+                            'attempt_logs' => json_encode([[
+                                'status' => 'queued',
+                                'timestamp' => $now->toDateTimeString(),
+                                'attempt' => 0
+                            ]]),
+                            'created_at' => $now,
+                            'updated_at' => $now
+                        ];
+                        $usersCount++;
+                    }
+
+                    // Bulk insert for better performance
+                    NotificationLog::insert($logs);
+
+                    // Dispatch jobs for each notification
+                    foreach ($logs as $log) {
+                        SendNotificationCampaign::dispatch($log['campaign_id'], $log['user_id'])
+                            ->delay($request->schedule_at ?? null);
+                    }
+                });
+
+            if ($usersCount === 0) {
                 return $this->error('No users available with FCM tokens for the selected user type', 400);
             }
-    
-            // Generate unique campaign ID
-            $campaignId = 'camp_' . uniqid();
-            $usersCount = 0;
-    
-            // Create notification logs and dispatch jobs
-            $usersQuery->chunk(100, function ($users) use ($request, $campaignId, &$usersCount) {
-                foreach ($users as $user) {
-                    $log = NotificationLog::create([
-                        'campaign_id' => $campaignId,
-                        'user_id' => $user->id,
-                        'title' => $request->title,
-                        'body' => $request->body,
-                        'data' => $request->data
-                    ]);
-    
-                    SendNotificationCampaign::dispatch($log);
-                    $usersCount++;
-                }
-            });
-    
+
             return $this->success([
                 'campaign_id' => $campaignId,
-                'users_count' => $usersCount,
-                'user_type' => $request->user_type
-            ], 'Notification campaign started successfully for '.$usersCount.' users');
-    
+                'title' => $request->title,
+                'body' => $request->body,
+                'user_type' => $userType,
+                'total_recipients' => $usersCount,
+                'status' => 'queued',
+                'schedule_at' => $request->schedule_at
+            ], 'Notification campaign started successfully');
+
         } catch (\Exception $e) {
             return $this->error('Failed to start notification campaign: ' . $e->getMessage(), 500);
         }
     }
+
     public function getCampaigns(Request $request)
     {
         try {
-            if (auth()->user()->user_type !== 'admin') {
-                return $this->error('Unauthorized access', 403);
-            }
 
-            // Get unique campaigns with their latest information
-            $campaigns = NotificationLog::select(
-                'campaign_id',
-                'title',
-                'body',
-                'data',
-                'created_at'
-            )
-            ->selectRaw('
-                COUNT(*) as total_notifications,
-                SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count,
-                SUM(CASE WHEN is_sent = 0 THEN 1 ELSE 0 END) as failed_count
-            ')
-            ->groupBy('campaign_id', 'title', 'body', 'data', 'created_at')
-            ->orderBy('created_at', 'desc')->get();
+            $query = NotificationLog::query()
+                ->select([
+                    'campaign_id',
+                    'title',
+                    'body',
+                    'user_type',
+                    DB::raw('MIN(created_at) as created_at'),
+                    DB::raw('COUNT(*) as total_notifications'),
+                    DB::raw('SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count'),
+                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count >= ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as failed_count'),
+                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count < ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as pending_count'),
+                    DB::raw('MAX(updated_at) as last_updated_at')
+                ])
+                ->groupBy('campaign_id', 'title', 'body', 'user_type')
+                ->orderBy('created_at', 'desc');
+
+            // // Add pagination
+            // $perPage = $request->get('per_page', 15);
+            // $campaigns = $query->paginate($perPage);
+
+            // // Transform each campaign
+            // $campaigns->getCollection()->transform(function ($campaign) {
+            //     $campaign->status = $this->determineCampaignStatus($campaign);
+            //     return $campaign;
+            // });
+            $campaigns = $query->get();
+            $campaigns->transform(function ($campaign) {
+                $campaign->status = $this->determineCampaignStatus($campaign);
+                return $campaign;
+            });
 
             return $this->success($campaigns, 'Campaigns retrieved successfully');
 
@@ -222,35 +255,84 @@ class UserController extends Controller
             return $this->error('Failed to get campaigns: ' . $e->getMessage(), 500);
         }
     }
-    public function getCampaignStatus($campaignId)
+
+    public function getCampaignDetails($campaignId)
     {
         try {
-            if (auth()->user()->user_type !== 'admin') {
-                return $this->error('Unauthorized access', 403);
-            }
+            $campaign = NotificationLog::select([
+                    'campaign_id',
+                    'title',
+                    'body',
+                    'user_type',
+                    DB::raw('MIN(created_at) as created_at'),
+                    DB::raw('COUNT(*) as total_notifications'),
+                    DB::raw('SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count'),
+                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count >= ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as failed_count'),
+                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count < ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as pending_count')
+                ])
+                ->where('campaign_id', $campaignId)
+                ->groupBy('campaign_id', 'title', 'body', 'user_type')
+                ->firstOrFail();
 
-            $stats = NotificationLog::where('campaign_id', $campaignId)
-                ->selectRaw('
-                    COUNT(*) as total,
-                    SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent,
-                    SUM(CASE WHEN is_sent = 0 THEN 1 ELSE 0 END) as failed
-                ')
-                ->first();
+            $notifications = NotificationLog::with('user:id,name,email')
+                ->where('campaign_id', $campaignId)
+                ->orderBy('created_at', 'desc');
 
-            $failedLogs = NotificationLog::where('campaign_id', $campaignId)
-                ->where('is_sent', false)
-                ->whereNotNull('error_message')
-                ->with('user:id,first_name,last_name,email')
-                ->get(['user_id', 'error_message']);
+            $campaign->status = $this->determineCampaignStatus($campaign);
 
             return $this->success([
-                'campaign_id' => $campaignId,
-                'statistics' => $stats,
-                'failed_deliveries' => $failedLogs
-            ], 'Campaign status retrieved successfully');
+                'campaign' => $campaign,
+                'notifications' => $notifications
+            ], 'Campaign details retrieved successfully');
 
         } catch (\Exception $e) {
-            return $this->error('Failed to get campaign status: ' . $e->getMessage(), 500);
+            return $this->error('Failed to get campaign details: ' . $e->getMessage(), 500);
         }
     }
+
+    private function determineCampaignStatus($campaign)
+    {
+        if ($campaign->failed_count == $campaign->total_notifications) {
+            return 'failed';
+        } elseif ($campaign->sent_count == $campaign->total_notifications) {
+            return 'success';
+        } elseif ($campaign->pending_count > 0) {
+            return 'processing';
+        } elseif ($campaign->sent_count > 0) {
+            return 'partial_success';
+        }
+        return 'queued';
+    }
+
+    // public function getCampaignStatus($campaignId)
+    // {
+    //     try {
+    //         if (auth()->user()->user_type !== 'admin') {
+    //             return $this->error('Unauthorized access', 403);
+    //         }
+
+    //         $stats = NotificationLog::where('campaign_id', $campaignId)
+    //             ->selectRaw('
+    //                 COUNT(*) as total,
+    //                 SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent,
+    //                 SUM(CASE WHEN is_sent = 0 THEN 1 ELSE 0 END) as failed
+    //             ')
+    //             ->first();
+
+    //         $failedLogs = NotificationLog::where('campaign_id', $campaignId)
+    //             ->where('is_sent', false)
+    //             ->whereNotNull('error_message')
+    //             ->with('user:id,first_name,last_name,email')
+    //             ->get(['user_id', 'error_message']);
+
+    //         return $this->success([
+    //             'campaign_id' => $campaignId,
+    //             'statistics' => $stats,
+    //             'failed_deliveries' => $failedLogs
+    //         ], 'Campaign status retrieved successfully');
+
+    //     } catch (\Exception $e) {
+    //         return $this->error('Failed to get campaign status: ' . $e->getMessage(), 500);
+    //     }
+    // }
 }

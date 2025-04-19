@@ -4,157 +4,192 @@ namespace App\Jobs;
 
 use App\Models\NotificationLog;
 use App\Services\FirebaseService;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class SendNotificationCampaign implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $notificationLog;
-    protected $maxAttempts = 3;
+    public $tries = 3;
+    public $maxExceptions = 1;
+    public $timeout = 60;
 
-    public function __construct(NotificationLog $notificationLog)
+    protected $campaignId;
+    protected $userId;
+
+    public function __construct(string $campaignId, int $userId)
     {
-        $this->notificationLog = $notificationLog;
+        $this->campaignId = $campaignId;
+        $this->userId = $userId;
     }
 
     public function handle(FirebaseService $firebaseService)
     {
+        $notificationLog = NotificationLog::where('campaign_id', $this->campaignId)
+            ->where('user_id', $this->userId)
+            ->first();
+
+        if (!$notificationLog) {
+            Log::channel('notifications')->error("Notification log not found", [
+                'campaign_id' => $this->campaignId,
+                'user_id' => $this->userId
+            ]);
+            return;
+        }
+
         try {
-            $user = $this->notificationLog->user;
-            
-            if (!$user->fcm_token) {
-                $this->logAttempt([
-                    'status' => 'skipped',
-                    'reason' => 'missing_token',
-                    'response' => [
-                        'success' => false,
-                        'error' => 'User has no FCM token'
-                    ]
-                ]);
-                throw new \Exception('User has no FCM token');
+            // Update attempt count
+            $notificationLog->increment('attempts_count');
+            $currentAttempt = $notificationLog->attempts_count;
+
+            $this->logAttempt($notificationLog, 'attempt_start', [
+                'attempt_number' => $currentAttempt
+            ]);
+
+            // Check if device token still exists
+            if (empty($notificationLog->device_token)) {
+                $this->handleFailure($notificationLog, 'Device token no longer available');
+                return;
             }
 
-            $this->logAttempt([
-                'status' => 'start',
-                'details' => 'Attempting to send notification'
-            ]);
-
+            // Send notification
             $response = $firebaseService->sendToDevice(
-                $user->fcm_token,
-                $this->notificationLog->title,
-                $this->notificationLog->body,
-                $this->notificationLog->data ?? []
+                $notificationLog->device_token,
+                $notificationLog->title,
+                $notificationLog->body,
+                $notificationLog->data ?? []
             );
 
-            // Enhanced response handling
-            $this->handleFirebaseResponse($response);
+            if ($response['success']) {
+                $this->handleSuccess($notificationLog, $response);
+            } else {
+                $this->handleFailure($notificationLog, $response['error'], $response);
+            }
 
         } catch (\Exception $e) {
-            $this->handleFailure($e, $response ?? null);
+            $this->handleFailure($notificationLog, $e->getMessage());
+            throw $e; // Allow job to retry if attempts remain
         }
     }
 
-    protected function handleFirebaseResponse($response)
+    protected function handleSuccess(NotificationLog $log, array $response)
     {
-        if ($response['success']) {
-            $this->logAttempt([
-                'status' => 'success',
+        $log->update([
+            'is_sent' => true,
+            'response' => $response,
+            'sent_at' => now(),
+            'attempt_logs' => $this->addAttemptLog($log, 'success', [
                 'response' => $response,
-                'details' => 'Notification sent successfully'
-            ]);
-            $this->notificationLog->update([
-                'is_sent' => true,
-                'data' => $response
-            ]);
-        } else {
-            $error = $response['error'] ?? 'Unknown Firebase error';
-            $this->logAttempt([
-                'status' => 'failed',
-                'reason' => $error,
-                'response' => $response,
-                'error_code' => $response['error_code'] ?? null,
-                'error_type' => $response['error_type'] ?? null
-            ]);
-            throw new \Exception($error);
-        }
-    }
-
-    protected function handleFailure(\Exception $e, $response = null)
-    {
-        $this->logAttempt([
-            'status' => 'error',
-            'reason' => $e->getMessage(),
-            'error_trace' => $this->formatTrace($e->getTraceAsString()),
-            'response' => $response ?? null
+                'message' => 'Notification sent successfully'
+            ])
         ]);
 
-        $this->notificationLog->update([
-            'is_sent' => false,
-            'error_message' => $e->getMessage(),
-            'data' => $response
+        $this->logAttempt($log, 'success', [
+            'response' => $response
         ]);
     }
 
-    protected function logAttempt(array $context = [])
+    protected function handleFailure(NotificationLog $log, string $error, array $response = null)
     {
-        $logData = [
-            'timestamp' => now()->toIso8601String(),
-            'campaign' => [
-                'id' => $this->notificationLog->campaign_id,
-                'title' => $this->notificationLog->title,
-                'body' => $this->notificationLog->body
-            ],
-            'user' => [
-                'id' => $this->notificationLog->user->id ?? null,
-                'fcm_token' => $this->notificationLog->user->fcm_token ?? null,
-                'device_type' => $this->notificationLog->user->device_type ?? null
-            ],
-            'attempt' => array_merge([
-                'attempt_number' => $this->attempts(),
-                'job_id' => $this->job->getJobId()
-            ], $context)
+        $updateData = [
+            'error_message' => $error,
+            'attempt_logs' => $this->addAttemptLog($log, 'failed', [
+                'error' => $error,
+                'response' => $response
+            ])
         ];
 
+        // Only mark as failed if this was the last attempt
+        if ($log->attempts_count >= $this->tries) {
+            $updateData['is_sent'] = false;
+        }
+
+        $log->update($updateData);
+
+        $this->logAttempt($log, 'failed', [
+            'error' => $error,
+            'response' => $response
+        ]);
+    }
+
+    protected function addAttemptLog(NotificationLog $log, string $status, array $data = [])
+    {
+        $logs = $log->attempt_logs ?? [];
+        $logs[] = array_merge([
+            'status' => $status,
+            'timestamp' => now()->toDateTimeString(),
+            'attempt' => $log->attempts_count
+        ], $data);
+
+        return $logs;
+    }
+
+    protected function logAttempt(NotificationLog $log, string $status, array $context = [])
+    {
         Log::channel('notifications')->log(
-            $this->getLogLevel($context['status']),
-            $this->formatLogMessage($context),
-            $logData
+            $this->getLogLevel($status),
+            $this->formatLogMessage($log, $status),
+            [
+                'campaign_id' => $log->campaign_id,
+                'notification_id' => $log->id,
+                'user_id' => $log->user_id,
+                'attempt' => $log->attempts_count,
+                'status' => $status,
+                'context' => $context
+            ]
         );
     }
 
-    protected function formatLogMessage(array $context): string
+    protected function formatLogMessage(NotificationLog $log, string $status)
     {
-        $parts = [
-            'Campaign:' . $this->notificationLog->campaign_id,
-            'User:' . ($this->notificationLog->user->id ?? 'unknown'),
-            'Status:' . $context['status'],
-            'Attempt:' . $this->attempts()
-        ];
-
-        if (!empty($context['reason'])) {
-            $parts[] = 'Reason:' . $context['reason'];
-        }
-
-        return implode(' | ', $parts);
+        return sprintf(
+            "Campaign %s - Notification %s - Attempt %d/%d - %s",
+            $log->campaign_id,
+            $log->id,
+            $log->attempts_count,
+            $this->tries,
+            $status
+        );
     }
 
-    protected function getLogLevel(string $status): string
+    protected function getLogLevel(string $status)
     {
         return match($status) {
-            'error', 'failed' => 'error',
-            'skipped' => 'warning',
-            default => 'info'
+            'success' => 'info',
+            'attempt_start' => 'debug',
+            'failed' => 'error',
+            default => 'notice'
         };
     }
 
-    protected function formatTrace($trace)
+    public function failed(\Exception $exception)
     {
-        return array_slice(explode("\n", $trace), 0, 5);
+        $notificationLog = NotificationLog::where('campaign_id', $this->campaignId)
+            ->where('user_id', $this->userId)
+            ->first();
+
+        if ($notificationLog) {
+            $notificationLog->update([
+                'is_sent' => false,
+                'error_message' => $exception->getMessage(),
+                'attempt_logs' => $this->addAttemptLog($notificationLog, 'job_failed', [
+                    'error' => $exception->getMessage(),
+                    'trace' => $exception->getTraceAsString()
+                ])
+            ]);
+        }
+
+        Log::channel('notifications')->error(
+            "Job failed for campaign {$this->campaignId} user {$this->userId}",
+            [
+                'error' => $exception->getMessage(),
+                'trace' => $exception->getTraceAsString()
+            ]
+        );
     }
 }
