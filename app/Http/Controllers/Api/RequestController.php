@@ -103,7 +103,6 @@ class RequestController extends Controller
 
                 return $this->success([
                     'request' => $serviceRequest,
-                    'requirements' => $serviceRequest->requirements,
                     'message' => 'Request created successfully'
                 ]);
             } catch (\Exception $e) {
