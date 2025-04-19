@@ -89,6 +89,12 @@ return [
             'level' => 'debug',
         ],
 
+        'provider_matching' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/provider_matching.log'),
+            'level' => 'debug',
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
