@@ -246,7 +246,6 @@ class RequestController extends Controller
                 $distance = $nearby['distance'];
                 $providerLog = &$nearby['log_entry'];
 
-                // Enhanced FCM Notification Handling
                 if (!empty($provider->user->fcm_token)) {
                     try {
                         $notificationResponse = $this->sendNotification(
@@ -281,7 +280,6 @@ class RequestController extends Controller
                     $notificationStats['reasons_failed'][$errorMsg] = ($notificationStats['reasons_failed'][$errorMsg] ?? 0) + 1;
                 }
 
-                // Enhanced Firestore Update
                 $providerLog['firestore_details']['attempted'] = true;
                 $firestoreStats['total_attempts']++;
 
