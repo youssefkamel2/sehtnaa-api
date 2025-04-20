@@ -142,7 +142,7 @@ class ProviderController extends Controller
     protected function sendRequestAcceptedRealTimeUpdate(ServiceRequest $serviceRequest, Provider $provider)
     {
         try {
-            $customerId = $serviceRequest->customer_id;
+            $customerId = $serviceRequest->customer->user_id;
             $documentId = 'accepted_' . $serviceRequest->id;
 
             $providerData = [
@@ -225,12 +225,6 @@ class ProviderController extends Controller
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
         return round($earthRadius * $c, 2);
     }
-
-
-
-
-
-
 
     public function getAllProviders(Request $request)
     {
