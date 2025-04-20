@@ -9,7 +9,7 @@ class ProviderDocument extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['provider_id', 'required_document_id', 'document_path', 'status'];
+    protected $fillable = ['provider_id', 'required_document_id', 'document_path', 'status', 'rejection_reason'];
 
     public function provider()
     {
