@@ -40,7 +40,7 @@ class ProviderController extends Controller
         try {
             $provider = Auth::user()->provider;
 
-            print_r($provider);die;
+            print_r($provider->user);die;
 
             if (!$provider) {
                 return $this->error('Provider account not found', 404);
