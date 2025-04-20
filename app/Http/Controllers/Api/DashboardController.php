@@ -102,7 +102,7 @@ class DashboardController extends Controller
                 'users' => [
                     'count' => User::count(),
                 ],
-                'feedbacks' => RequestFeedback::get(),
+                'feedbacks' => RequestFeedback::with(['user:id,first_name,last_name,type']),
                 
             ];
 
