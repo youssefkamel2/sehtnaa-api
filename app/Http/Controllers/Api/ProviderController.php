@@ -68,6 +68,12 @@ class ProviderController extends Controller
             // Send real-time update to customer
             $this->sendRequestAcceptedRealTimeUpdate($serviceRequest, $provider);
 
+            // update provider is_avilable to be false
+            $provider->update([
+                'is_available' => false
+            ]);
+
+
             DB::commit();
 
             return $this->success([
