@@ -106,7 +106,7 @@ class DashboardController extends Controller
                 
             ];
 
-            return $this->success($data, 'Dashboard data retrieved successfully');
+            return $this->success($data, 'Data retrieved successfully');
             
         } catch (\Exception $e) {
             return $this->error('Failed to load data: ' . $e->getMessage(), 500);
