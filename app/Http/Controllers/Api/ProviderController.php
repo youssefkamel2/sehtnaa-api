@@ -70,7 +70,7 @@ class ProviderController extends Controller
 
             // update provider is_avilable to be false
             $provider->update([
-                'is_available' => 0
+                'is_available' => false
             ]);
 
 
