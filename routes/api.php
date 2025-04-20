@@ -81,7 +81,6 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function (
 
 });
 
-
 Route::prefix('user')->middleware(['auth:api'])->group(function () {
 
     Route::post('/update-profile', [UserController::class, 'updateProfile']);
@@ -129,3 +128,8 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
     Route::get('/{id}/complaints', [RequestController::class, 'getRequestComplaints']);
 });
 
+
+// landing page
+Route::prefix('landing')->group(function () {
+    Route::get('/', [DashboardController::class, 'landing']);
+});

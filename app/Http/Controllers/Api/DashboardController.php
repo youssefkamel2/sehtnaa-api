@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\Customer;
 use App\Models\User;
-use App\Models\Provider;
 use App\Models\Service;
-use App\Traits\ResponseTrait;
+use App\Models\Customer;
+use App\Models\Provider;
 use Illuminate\Http\Request;
+use App\Traits\ResponseTrait;
+use App\Models\RequestFeedback;
+use App\Http\Controllers\Controller;
 
 class DashboardController extends Controller
 {
@@ -75,6 +76,34 @@ class DashboardController extends Controller
                                 ]
                             ];
                         })
+                ]
+            ];
+
+            return $this->success($data, 'Dashboard data retrieved successfully');
+            
+        } catch (\Exception $e) {
+            return $this->error('Failed to load dashboard data: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function landing(Request $request)
+    {
+        try {
+            $data = [
+                'customers' => [
+                    'count' => Customer::count(),
+                ],
+                'providers' => [
+                    'count' => Provider::count(),
+                ],
+                'services' => [
+                    'count' => Service::count(),
+                ],
+                'users' => [
+                    'count' => User::count(),
+                ],
+                'feedbacks' => [
+                    RequestFeedback::get(),
                 ]
             ];
 
