@@ -504,8 +504,8 @@ class ProviderController extends Controller
 
             // Update provider status to rejected if not already
             $provider = $document->provider;
-            if ($provider->user->status !== 'rejected') {
-                $provider->user()->update(['status' => 'rejected']);
+            if ($provider->user->status !== 'de-active') {
+                $provider->user()->update(['status' => 'de-active']);
             }
 
             return $this->success(null, 'Document rejected successfully.');
