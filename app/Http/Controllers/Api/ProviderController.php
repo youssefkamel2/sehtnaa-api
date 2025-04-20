@@ -40,8 +40,6 @@ class ProviderController extends Controller
         try {
             $provider = Auth::user()->provider;
 
-            print_r($provider->user);die;
-
             if (!$provider) {
                 return $this->error('Provider account not found', 404);
             }
@@ -104,7 +102,7 @@ class ProviderController extends Controller
                 'type' => 'request_accepted',
                 'request_id' => $serviceRequest->id,
                 'provider_id' => $provider->id,
-                'provider_name' => $provider->user->name ?? 'Provider',
+                'provider_name' => $provider->user->first_name ?? 'Provider',
                 'service_name' => $serviceRequest->service->name['en'] ?? $serviceRequest->service->name,
                 'timestamp' => now()->toDateTimeString()
             ];
@@ -150,7 +148,7 @@ class ProviderController extends Controller
 
             $providerData = [
                 'provider_id' => $provider->id,
-                'name' => $provider->user->name ?? 'Provider',
+                'name' => $provider->user->first_name ?? 'Provider',
                 'phone' => $provider->user->phone ?? '',
                 'profile_image' => $provider->user->profile_image ?? '',
                 'provider_type' => $provider->provider_type,
