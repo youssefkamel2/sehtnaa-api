@@ -102,9 +102,8 @@ class DashboardController extends Controller
                 'users' => [
                     'count' => User::count(),
                 ],
-                'feedbacks' => [
-                    RequestFeedback::get(),
-                ]
+                'feedbacks' => RequestFeedback::get(),
+                
             ];
 
             return $this->success($data, 'Dashboard data retrieved successfully');
