@@ -233,6 +233,10 @@ class ProviderController extends Controller
         return round($earthRadius * $c, 2);
     }
 
+
+
+
+    
     public function getAllProviders(Request $request)
     {
         try {

@@ -354,9 +354,6 @@ class RequestController extends Controller
         return $earthRadius * $c;
     }
 
-
-
-
     // get all requests (for admin)
     public function getAllRequests()
     {
