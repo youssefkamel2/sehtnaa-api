@@ -40,6 +40,8 @@ class ProviderController extends Controller
         try {
             $provider = Auth::user()->provider;
 
+            print_r($provider);die;
+
             if (!$provider) {
                 return $this->error('Provider account not found', 404);
             }
@@ -142,6 +144,7 @@ class ProviderController extends Controller
     protected function sendRequestAcceptedRealTimeUpdate(ServiceRequest $serviceRequest, Provider $provider)
     {
         try {
+
             $customerId = $serviceRequest->customer->user_id;
             $documentId = 'accepted_' . $serviceRequest->id;
 
