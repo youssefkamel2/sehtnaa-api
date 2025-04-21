@@ -10,7 +10,7 @@ return new class extends Migration
      * Run the migrations.
      */
 
-    //  maybe deleteddddddddddddddddddddddddddddd
+    //  
     
     public function up()
     {

@@ -77,12 +77,6 @@ return [
             'level' => 'debug',
         ],
         
-        'firestore_errors' => [
-            'driver' => 'single',
-            'path' => storage_path('logs/firestore_errors.log'),
-            'level' => 'debug',
-        ],
-        
         'fcm_errors' => [
             'driver' => 'single',
             'path' => storage_path('logs/fcm_errors.log'),
@@ -92,6 +86,12 @@ return [
         'provider_matching' => [
             'driver' => 'single',
             'path' => storage_path('logs/provider_matching.log'),
+            'level' => 'debug',
+        ],
+
+        'request_expansion' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/request_expansion.log'),
             'level' => 'debug',
         ],
 

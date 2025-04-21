@@ -12,7 +12,7 @@ class Request extends Model
     protected $fillable = [
         'customer_id', 'service_id', 'phone', 'address', 'latitude', 'longitude',
         'additional_info', 'status', 'assigned_provider_id', 'scheduled_at',
-        'started_at', 'completed_at', 'gender'
+        'started_at', 'completed_at', 'gender', 'current_search_radius', 'expansion_attempts', 'last_expansion_at'
     ];
 
     protected $casts = [

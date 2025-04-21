@@ -12,30 +12,56 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule)
     {
+
+        // Add the request expansion queue worker
+        $schedule->command('queue:work --queue=request_expansion --tries=3 --sleep=3 --timeout=60 --stop-when-empty')
+            ->everyMinute()
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/request-expansion.log'))
+            ->onSuccess(function () {
+                $output = file_get_contents(storage_path('logs/request-expansion.log'));
+                $processedJobs = substr_count($output, 'Processed:');
+                $failedJobs = substr_count($output, 'Failed:');
+
+                Log::channel('scheduler')->info("Request expansion queue processed", [
+                    'jobs_processed' => $processedJobs,
+                    'jobs_failed' => $failedJobs,
+                    'output' => $output
+                ]);
+
+                file_put_contents(storage_path('logs/request-expansion.log'), '');
+            })
+            ->onFailure(function () {
+                $error = file_get_contents(storage_path('logs/request-expansion.log'));
+                Log::channel('scheduler')->error('Request expansion queue processing failed', [
+                    'error' => $error
+                ]);
+            });
+
         // Process queue jobs with detailed logging
         $schedule->command('queue:work --queue=notifications,default --tries=3 --sleep=3 --timeout=60 --stop-when-empty')
-        ->everyMinute()
-        ->withoutOverlapping()
-        ->appendOutputTo(storage_path('logs/queue-worker.log'))
-        ->onSuccess(function () {
-            $output = file_get_contents(storage_path('logs/queue-worker.log'));
-            $processedJobs = substr_count($output, 'Processed:');
-            $failedJobs = substr_count($output, 'Failed:');
-            
-            Log::channel('scheduler')->info("Queue processed successfully", [
-                'jobs_processed' => $processedJobs,
-                'jobs_failed' => $failedJobs,
-                'output' => $output
-            ]);
-            
-            file_put_contents(storage_path('logs/queue-worker.log'), '');
-        })
-        ->onFailure(function () {
-            $error = file_get_contents(storage_path('logs/queue-worker.log'));
-            Log::channel('scheduler')->error('Queue processing failed', [
-                'error' => $error
-            ]);
-        });
+            ->everyMinute()
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/queue-worker.log'))
+            ->onSuccess(function () {
+                $output = file_get_contents(storage_path('logs/queue-worker.log'));
+                $processedJobs = substr_count($output, 'Processed:');
+                $failedJobs = substr_count($output, 'Failed:');
+
+                Log::channel('scheduler')->info("Queue processed successfully", [
+                    'jobs_processed' => $processedJobs,
+                    'jobs_failed' => $failedJobs,
+                    'output' => $output
+                ]);
+
+                file_put_contents(storage_path('logs/queue-worker.log'), '');
+            })
+            ->onFailure(function () {
+                $error = file_get_contents(storage_path('logs/queue-worker.log'));
+                Log::channel('scheduler')->error('Queue processing failed', [
+                    'error' => $error
+                ]);
+            });
 
         // Retry failed jobs daily with counts
         $schedule->command('queue:retry all')
@@ -62,7 +88,7 @@ class Kernel extends ConsoleKernel
                 $countAfter = DB::table('telescope_entries')
                     ->where('created_at', '>', now()->subHours(48))
                     ->count();
-                
+
                 Log::channel('scheduler')->info('Telescope pruning completed', [
                     'entries_pruned' => $countBefore - $countAfter,
                     'entries_remaining' => $countAfter
@@ -79,7 +105,7 @@ class Kernel extends ConsoleKernel
                 $count = DB::table('activity_log')
                     ->where('created_at', '<', now()->subDays(7))
                     ->count();
-                
+
                 Log::channel('scheduler')->info('Activity Log pruning completed', [
                     'entries_cleaned' => $count
                 ]);
@@ -87,19 +113,6 @@ class Kernel extends ConsoleKernel
             ->onFailure(function () {
                 Log::channel('scheduler')->error('Activity Log pruning failed');
             });
-
-        // Enhanced queue health monitoring
-        // $schedule->command('queue:monitor')
-        //     ->everyFiveMinutes()
-        //     ->onSuccess(function () {
-        //         $stats = [
-        //             'pending_jobs' => DB::table('jobs')->count(),
-        //             'failed_jobs' => DB::table('failed_jobs')->count(),
-        //             'queue_size' => $this->getRedisQueueSize()
-        //         ];
-                
-        //         Log::channel('scheduler')->info('Queue health check completed', $stats);
-        //     });
 
         // Enhanced log cleanup with file details
         $schedule->command('log:clean --keep-last=48')
@@ -109,7 +122,7 @@ class Kernel extends ConsoleKernel
                     'laravel.log' => $this->getLogFileInfo('laravel.log'),
                     'notifications.log' => $this->getLogFileInfo('notifications.log')
                 ];
-                
+
                 Log::channel('scheduler')->info('Log files cleanup completed', [
                     'files_processed' => $files,
                     'retention_period' => '48 hours'
@@ -122,12 +135,12 @@ class Kernel extends ConsoleKernel
 
     protected function commands(): void
     {
-        $this->load(__DIR__.'/Commands');
+        $this->load(__DIR__ . '/Commands');
         require base_path('routes/console.php');
     }
 
     // Helper methods
-    
+
     protected function getLastProcessedJob(string $output): ?string
     {
         preg_match_all('/Processed: (.+)/', $output, $matches);
@@ -152,7 +165,7 @@ class Kernel extends ConsoleKernel
     protected function getLogFileInfo(string $filename): array
     {
         $path = storage_path("logs/{$filename}");
-        
+
         if (!file_exists($path)) {
             return ['status' => 'not_found'];
         }

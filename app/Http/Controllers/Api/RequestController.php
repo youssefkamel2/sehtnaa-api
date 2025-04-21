@@ -13,11 +13,13 @@ use App\Services\FirebaseService;
 use App\Models\RequestRequirement;
 use App\Models\ServiceRequirement;
 use App\Services\FirestoreService;
+use App\Services\ProviderNotifier;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
 use App\Models\RequestCancellationLog;
+use App\Jobs\ExpandRequestSearchRadius;
 use App\Models\Request as ServiceRequest;
 use Illuminate\Support\Facades\Validator;
 
@@ -27,11 +29,13 @@ class RequestController extends Controller
 
     protected $firebaseService;
     protected $firestoreService;
+    protected $providerNotifier;
 
-    public function __construct(FirebaseService $firebaseService, FirestoreService $firestoreService)
+    public function __construct(FirebaseService $firebaseService, FirestoreService $firestoreService, ProviderNotifier $providerNotifier)
     {
         $this->firebaseService = $firebaseService;
         $this->firestoreService = $firestoreService;
+        $this->providerNotifier = $providerNotifier;
     }
 
     public function createRequest(Request $request)
@@ -71,7 +75,9 @@ class RequestController extends Controller
                     'longitude' => $request->longitude,
                     'additional_info' => $request->additional_info,
                     'gender' => $request->gender,
-                    'status' => 'pending'
+                    'status' => 'pending',
+                    'current_search_radius' => 1, // Start with 1 km
+                    'expansion_attempts' => 0
                 ]);
 
                 if (isset($request->requirements)) {
@@ -92,11 +98,33 @@ class RequestController extends Controller
                     }
                 }
 
-                $notifiedCount = $this->findAndNotifyProviders($serviceRequest);
+                // Start with 1 km radius
+                $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 1);
 
                 if ($notifiedCount === 0) {
-                    DB::rollBack();
-                    return $this->error('No available providers found for this service in your area', 400);
+                    // No providers at 1 km, try 3 km immediately
+                    $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 3);
+                    $serviceRequest->update(['current_search_radius' => 3]);
+
+                    if ($notifiedCount === 0) {
+                        // Still no providers, try 5 km immediately
+                        $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 5);
+                        $serviceRequest->update(['current_search_radius' => 5]);
+
+                        if ($notifiedCount === 0) {
+                            DB::rollBack();
+                            return $this->error('No available providers found for this service in your area', 400);
+                        }
+                    }
+                } else {
+                    // Found providers at 1 km, schedule expansion job
+                    Log::channel('request_expansion')->info('Scheduling request expansion job', [
+                        'request_id' => $serviceRequest->id,
+                        'providers_notified' => $notifiedCount,
+                    ]);
+                    ExpandRequestSearchRadius::dispatch($serviceRequest, 1)
+                        ->delay(now()->addSeconds(10))
+                        ->onQueue('request_expansion');
                 }
 
                 DB::commit();
@@ -114,245 +142,7 @@ class RequestController extends Controller
         }
     }
 
-    protected function findAndNotifyProviders(ServiceRequest $serviceRequest)
-    {
 
-        try {
-            $logData = [
-                'request_id' => $serviceRequest->id,
-                'service_id' => $serviceRequest->service_id,
-                'customer_id' => $serviceRequest->customer_id,
-                'timestamp' => now()->toDateTimeString(),
-                'providers' => [],
-                'search_radius' => [],
-                'notification_analysis' => [],
-                'firestore_analysis' => []
-            ];
-
-            $service = Service::find($serviceRequest->service_id);
-            if (!$service) {
-                $logData['error'] = 'Service not found';
-                Log::channel('provider_matching')->error('Service not found', $logData);
-                return 0;
-            }
-
-            $providers = Provider::with(['user'])
-                ->where('is_available', true)
-                ->where('provider_type', $service->provider_type)
-                ->get();
-
-            $logData['total_available_providers'] = $providers->count();
-            $logData['service_type'] = $service->name ?? 'Unknown';
-            $logData['required_provider_type'] = $service->provider_type;
-
-            $searchRadii = [1, 3, 5];
-            $nearbyProviders = [];
-
-            foreach ($searchRadii as $radius) {
-                $maxDistance = $radius;
-                $logData['search_radius'][] = $maxDistance . 'km';
-
-                $currentRadiusProviders = [];
-
-                foreach ($providers as $provider) {
-                    $providerLog = [
-                        'provider_id' => $provider->id,
-                        'provider_name' => $provider->user->name ?? $provider->user->username ?? 'Provider #' . $provider->id,
-                        'provider_type' => $provider->provider_type,
-                        'has_location' => false,
-                        'distance' => null,
-                        'within_range' => false,
-                        'notification_details' => [
-                            'fcm_token_exists' => !empty($provider->user->fcm_token),
-                            'token_status' => !empty($provider->user->fcm_token) ? 'Valid' : 'Missing',
-                            'sent' => false,
-                            'error' => null,
-                            'response' => null
-                        ],
-                        'firestore_details' => [
-                            'attempted' => false,
-                            'success' => false,
-                            'error' => null,
-                            'document_id' => null,
-                            'data_sent' => null
-                        ],
-                        'location_status' => null
-                    ];
-
-                    if (!$provider->user->latitude || !$provider->user->longitude) {
-                        $providerLog['location_status'] = 'Missing coordinates';
-                        $logData['providers'][] = $providerLog;
-                        continue;
-                    }
-
-                    $providerLog['has_location'] = true;
-                    $providerLog['location_status'] = 'Coordinates available';
-
-                    try {
-                        $distance = $this->calculateDistance(
-                            $serviceRequest->latitude,
-                            $serviceRequest->longitude,
-                            $provider->user->latitude,
-                            $provider->user->longitude
-                        );
-
-                        $providerLog['distance'] = round($distance, 2);
-
-                        if ($distance <= $maxDistance) {
-                            $providerLog['within_range'] = true;
-                            $currentRadiusProviders[] = [
-                                'provider' => $provider,
-                                'distance' => $distance,
-                                'log_entry' => &$providerLog
-                            ];
-                        }
-                    } catch (\Exception $e) {
-                        $providerLog['location_status'] = 'Distance calculation failed: ' . $e->getMessage();
-                    }
-
-                    $logData['providers'][] = $providerLog;
-                }
-
-                if (count($currentRadiusProviders) > 0) {
-                    $nearbyProviders = $currentRadiusProviders;
-                    $logData['final_search_radius'] = $maxDistance . 'km';
-                    break;
-                }
-            }
-
-            if (count($nearbyProviders) === 0) {
-                $logData['outcome'] = 'No providers found in any search radius';
-                Log::channel('provider_matching')->info('No providers found', $logData);
-                return 0;
-            }
-
-            $notificationStats = [
-                'total_eligible' => count($nearbyProviders),
-                'sent_successfully' => 0,
-                'failed' => 0,
-                'reasons_failed' => []
-            ];
-
-            $firestoreStats = [
-                'total_attempts' => 0,
-                'successful' => 0,
-                'failed' => 0,
-                'reasons_failed' => []
-            ];
-
-            foreach ($nearbyProviders as $index => $nearby) {
-                $provider = $nearby['provider'];
-                $distance = $nearby['distance'];
-                $providerLog = &$nearby['log_entry'];
-
-                if (!empty($provider->user->fcm_token)) {
-                    try {
-                        $notificationResponse = $this->sendNotification(
-                            $provider->user->fcm_token,
-                            'New Service Request',
-                            'You have a new service request nearby',
-                            [
-                                'type' => 'new_request',
-                                'request_id' => $serviceRequest->id,
-                                'distance' => $distance
-                            ]
-                        );
-
-                        if (isset($notificationResponse['error'])) {
-                            throw new \Exception($notificationResponse['error']);
-                        }
-
-                        $providerLog['notification_details']['sent'] = true;
-                        $providerLog['notification_details']['response'] = $notificationResponse;
-                        $notificationStats['sent_successfully']++;
-                    } catch (\Exception $e) {
-                        $errorMsg = 'FCM Error: ' . $e->getMessage();
-                        $providerLog['notification_details']['error'] = $errorMsg;
-                        $providerLog['notification_details']['sent'] = false;
-                        $notificationStats['failed']++;
-                        $notificationStats['reasons_failed'][$errorMsg] = ($notificationStats['reasons_failed'][$errorMsg] ?? 0) + 1;
-                    }
-                } else {
-                    $errorMsg = 'No FCM token available';
-                    $providerLog['notification_details']['error'] = $errorMsg;
-                    $notificationStats['failed']++;
-                    $notificationStats['reasons_failed'][$errorMsg] = ($notificationStats['reasons_failed'][$errorMsg] ?? 0) + 1;
-                }
-
-                $providerLog['firestore_details']['attempted'] = true;
-                $firestoreStats['total_attempts']++;
-
-                try {
-                    $documentId = uniqid();
-                    $firestoreData = [
-                        'request_id' => (string) $serviceRequest->id,
-                        'customer_name' => $serviceRequest->customer->user->first_name . ' ' . $serviceRequest->customer->user->last_name,
-                        'service_name' => is_array($serviceRequest->service->name) 
-                            ? ($serviceRequest->service->name['en'] ?? 'Unknown Service') 
-                            : (string) $serviceRequest->service->name,
-                        'gender' => (string) ($serviceRequest->gender ?? 'unknown'), // Fallback for empty gender
-                        'distance' => (string) round($distance, 2) . ' km',
-                        'timestamp' => now()->toDateTimeString(),
-                        'status' => 'pending'
-                    ];
-
-                    $providerLog['firestore_details']['data_sent'] = $firestoreData;
-
-                    $result = $this->firestoreService->createDocument(
-                        'provider_requests/' . $provider->id . '/notifications',
-                        $documentId,
-                        $firestoreData
-                    );
-
-                    $providerLog['firestore_details']['success'] = true;
-                    $providerLog['firestore_details']['document_id'] = $documentId;
-                    $providerLog['firestore_details']['result'] = $result;
-                    $firestoreStats['successful']++;
-                } catch (\Exception $e) {
-                    $errorMsg = $e->getMessage();
-                    $providerLog['firestore_details']['success'] = false;
-                    $providerLog['firestore_details']['error'] = $errorMsg;
-                    $firestoreStats['failed']++;
-                    $firestoreStats['reasons_failed'][$errorMsg] = ($firestoreStats['reasons_failed'][$errorMsg] ?? 0) + 1;
-
-                    Log::channel('firestore_errors')->error('Firestore update failed for provider', [
-                        'provider_id' => $provider->id,
-                        'request_id' => $serviceRequest->id,
-                        'error' => $errorMsg,
-                        'data' => $firestoreData
-                    ]);
-                }
-            }
-
-            $logData['notification_analysis'] = $notificationStats;
-            $logData['firestore_analysis'] = $firestoreStats;
-            $logData['outcome'] = 'Found ' . count($nearbyProviders) . ' providers in ' . $logData['final_search_radius'];
-
-            Log::channel('provider_matching')->info('Provider matching results', $logData);
-
-            return count($nearbyProviders);
-        } catch (\Exception $e) {
-            Log::channel('provider_matching')->error('Error in findAndNotifyProviders', [
-                'request_id' => $serviceRequest->id ?? null,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'time' => now()->toDateTimeString()
-            ]);
-            return 0;
-        }
-    }
-
-    protected function calculateDistance($lat1, $lon1, $lat2, $lon2)
-    {
-        $earthRadius = 6371;
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLon = deg2rad($lon2 - $lon1);
-        $a = sin($dLat / 2) * sin($dLat / 2) +
-            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
-            sin($dLon / 2) * sin($dLon / 2);
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-        return $earthRadius * $c;
-    }
 
     // get all requests (for admin)
     public function getAllRequests()

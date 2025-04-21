@@ -91,7 +91,7 @@ class FirestoreService
     
             if ($response->getStatusCode() >= 400) {
                 $errorMsg = $responseData['error']['message'] ?? 'Unknown Firestore error';
-                Log::channel('firestore_errors')->error('Firestore API error', [
+                Log::channel('firestore')->error('Firestore API error', [
                     'status' => $response->getStatusCode(),
                     'error' => $errorMsg,
                     'collection' => $collection,
@@ -111,7 +111,7 @@ class FirestoreService
     
             return $responseData;
         } catch (\Exception $e) {
-            Log::channel('firestore_errors')->error('Firestore API request failed', [
+            Log::channel('firestore')->error('Firestore API request failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'collection' => $collection,
