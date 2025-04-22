@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Traits\ResponseTrait;
+use Illuminate\Support\Facades\Auth;
+use App\Models\Request as ServiceRequest;
 
 class CustomerController extends Controller
 {
@@ -59,6 +61,70 @@ class CustomerController extends Controller
 
         } catch (\Exception $e) {
             return $this->error('Failed to update customer status: ' . $e->getMessage(), 500);
+        }
+    }
+
+    // function to get the ongoing requests of a customer [status is accepted or pending]
+    public function getOngoingRequests()
+    {
+        try {
+            $user = Auth::user();
+    
+            if ($user->user_type !== 'customer') {
+                return $this->error('Only customers can view requests', 403);
+            }
+    
+            if (!$user->customer) {
+                return $this->error('Customer profile not found', 404);
+            }
+    
+            $requests = ServiceRequest::with([
+                    'service:id,name',
+                    'requirements.serviceRequirement:id,name,type',
+                    'providers.user:id,first_name,last_name,profile_image'
+                ])
+                ->where('customer_id', $user->customer->id)
+                ->whereIn('status', ['pending', 'accepted'])
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($request) {
+                    return [
+                        'id' => $request->id,
+                        'service' => [
+                            'id' => $request->service_id,
+                            'name' => $request->service->name ?? 'Unknown Service'
+                        ],
+                        'status' => $request->status,
+                        'created_at' => $request->created_at->format('Y-m-d H:i:s'),
+                        'updated_at' => $request->updated_at->format('Y-m-d H:i:s'),
+                        'location' => [
+                            'latitude' => $request->latitude,
+                            'longitude' => $request->longitude
+                        ],
+                        'requirements' => $request->requirements->map(function ($requirement) {
+                            return [
+                                'id' => $requirement->id,
+                                'name' => $requirement->serviceRequirement->name ?? 'Unknown',
+                                'type' => $requirement->serviceRequirement->type ?? 'input',
+                                'value' => $requirement->value,
+                                'file_url' => $requirement->file_path ? asset('storage/' . $requirement->file_path) : null
+                            ];
+                        }),
+                        'providers' => $request->providers->map(function ($provider) {
+                            return [
+                                'id' => $provider->id,
+                                'name' => $provider->user->first_name . ' ' . $provider->user->last_name,
+                                'avatar' => $provider->user->profile_image ? asset('storage/' . $provider->user->profile_image) : null,
+                                'status' => $provider->pivot->status
+                            ];
+                        })
+                    ];
+                });
+    
+            return $this->success($requests, 'Ongoing requests retrieved successfully');
+    
+        } catch (\Exception $e) {
+            return $this->error('Failed to retrieve ongoing requests: ' . $e->getMessage(), 500);
         }
     }
 

@@ -89,7 +89,7 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
     Route::post('/update-language', [UserController::class, 'updateLanguage']);
     Route::post('/update-profile-image', [UserController::class, 'updateProfileImage']);
     Route::post('/update-password', [UserController::class, 'changePassword']);
-
+    Route::get('/ongoing-requests', [CustomerController::class,'getOngoingRequests']);
 });
 
 
