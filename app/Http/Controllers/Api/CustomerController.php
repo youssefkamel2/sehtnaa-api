@@ -110,7 +110,7 @@ class CustomerController extends Controller
                                 'file_url' => $requirement->file_path ? asset('storage/' . $requirement->file_path) : null
                             ];
                         }),
-                        'providers' => $request->providers->map(function ($provider) {
+                        'providers' => $request->assignedProvider->map(function ($provider) {
                             return [
                                 'id' => $provider->id,
                                 'name' => $provider->user->first_name . ' ' . $provider->user->last_name,
