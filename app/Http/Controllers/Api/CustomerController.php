@@ -81,7 +81,7 @@ class CustomerController extends Controller
             $requests = ServiceRequest::with([
                     'service:id,name',
                     'requirements.serviceRequirement:id,name,type',
-                    'providers.user:id,first_name,last_name,profile_image'
+                    'assignedProvider.user:id,first_name,last_name,profile_image'
                 ])
                 ->where('customer_id', $user->customer->id)
                 ->whereIn('status', ['pending', 'accepted'])
@@ -110,14 +110,12 @@ class CustomerController extends Controller
                                 'file_url' => $requirement->file_path ? asset('storage/' . $requirement->file_path) : null
                             ];
                         }),
-                        'providers' => $request->providers->map(function ($provider) {
-                            return [
-                                'id' => $provider->id,
-                                'name' => $provider->user->first_name . ' ' . $provider->user->last_name,
-                                'avatar' => $provider->user->profile_image ? asset('storage/' . $provider->user->profile_image) : null,
-                                'status' => $provider->pivot->status
-                            ];
-                        })
+                        'provider' => $request->assignedProvider ? [
+                            'id' => $request->assignedProvider->id,
+                            'name' => $request->assignedProvider->user->first_name . ' ' . $request->assignedProvider->user->last_name,
+                            'avatar' => $request->assignedProvider->user->profile_image ? asset('storage/' . $request->assignedProvider->user->profile_image) : null,
+                            'status' => $request->status
+                        ] : null
                     ];
                 });
     
