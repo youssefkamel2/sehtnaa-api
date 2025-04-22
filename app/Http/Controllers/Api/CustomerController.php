@@ -81,7 +81,7 @@ class CustomerController extends Controller
             $requests = ServiceRequest::with([
                     'service:id,name',
                     'requirements.serviceRequirement:id,name,type',
-                    'providers.user:id,first_name,last_name,profile_image'
+                    'assignedProvider.user:id,first_name,last_name,profile_image'
                 ])
                 ->where('customer_id', $user->customer->id)
                 ->whereIn('status', ['pending', 'accepted'])
