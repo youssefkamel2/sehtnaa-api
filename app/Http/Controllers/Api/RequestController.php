@@ -42,30 +42,50 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-
+    
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can create requests', 403);
             }
-
+    
             if (!$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-
-            $validator = Validator::make($request->all(), [
+    
+            // Get all requirements for this service
+            $serviceRequirements = ServiceRequirement::where('service_id', $request->service_id)->get();
+    
+            // Prepare validation rules
+            $validatorRules = [
                 'service_id' => 'required|exists:services,id',
                 'latitude' => 'required|numeric',
                 'longitude' => 'required|numeric',
                 'phone' => 'required|string',
                 'gender' => 'required|in:male,female',
                 'additional_info' => 'nullable|string',
+                'requirements' => 'required|array|size:' . $serviceRequirements->count(),
+                'requirements.*.requirement_id' => 'required|exists:service_requirements,id',
+            ];
+    
+            // Add dynamic validation for each requirement
+            foreach ($serviceRequirements as $requirement) {
+                $rule = $requirement->type === 'file' 
+                    ? 'required|file|mimes:jpg,jpeg,png,pdf,doc,docx|max:2048'
+                    : 'required|string|max:255';
+    
+                $validatorRules['requirements.*.value'] = $rule;
+            }
+    
+            $validator = Validator::make($request->all(), $validatorRules, [
+                'requirements.size' => 'All service requirements must be provided',
+                'requirements.*.value.required' => 'This requirement field is required'
             ]);
-
+    
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-
+    
             DB::beginTransaction();
-
+    
             try {
                 $serviceRequest = ServiceRequest::create([
                     'customer_id' => $user->customer->id,
@@ -76,41 +96,44 @@ class RequestController extends Controller
                     'additional_info' => $request->additional_info,
                     'gender' => $request->gender,
                     'status' => 'pending',
-                    'current_search_radius' => 1, // Start with 1 km
+                    'current_search_radius' => 1,
                     'expansion_attempts' => 0
                 ]);
-
-                if (isset($request->requirements)) {
-                    foreach ($request->requirements as $requirementData) {
-                        $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
-
-                        $filePath = null;
-                        if ($serviceRequirement->type === 'file' && isset($requirementData['file'])) {
-                            $filePath = $requirementData['file']->store('requirements');
-                        }
-
-                        RequestRequirement::create([
-                            'request_id' => $serviceRequest->id,
-                            'service_requirement_id' => $requirementData['requirement_id'],
-                            'value' => $serviceRequirement->type === 'input' ? $requirementData['value'] : null,
-                            'file_path' => $filePath
-                        ]);
+    
+                // Process each requirement
+                foreach ($request->requirements as $requirementData) {
+                    $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
+    
+                    $filePath = null;
+                    $value = null;
+    
+                    if ($serviceRequirement->type === 'file') {
+                        $filePath = $requirementData['file']->store('request_requirements', 'public');
+                    } else {
+                        $value = $requirementData['value'];
                     }
+    
+                    RequestRequirement::create([
+                        'request_id' => $serviceRequest->id,
+                        'service_requirement_id' => $requirementData['requirement_id'],
+                        'value' => $value,
+                        'file_path' => $filePath
+                    ]);
                 }
-
+    
                 // Start with 1 km radius
                 $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 1);
-
+    
                 if ($notifiedCount === 0) {
                     // No providers at 1 km, try 3 km immediately
                     $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 3);
                     $serviceRequest->update(['current_search_radius' => 3]);
-
+    
                     if ($notifiedCount === 0) {
                         // Still no providers, try 5 km immediately
                         $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 5);
                         $serviceRequest->update(['current_search_radius' => 5]);
-
+    
                         if ($notifiedCount === 0) {
                             DB::rollBack();
                             return $this->error('No available providers found for this service in your area', 400);
@@ -126,9 +149,9 @@ class RequestController extends Controller
                         ->delay(now()->addSeconds(10))
                         ->onQueue('request_expansion');
                 }
-
+    
                 DB::commit();
-
+    
                 return $this->success([
                     'request' => $serviceRequest,
                     'message' => 'Request created successfully'
