@@ -38,149 +38,165 @@ class RequestController extends Controller
         $this->providerNotifier = $providerNotifier;
     }
 
+
     public function createRequest(Request $request)
-    {
-        try {
-            $user = Auth::user();
-    
-            if ($user->user_type !== 'customer') {
-                return $this->error('Only customers can create requests', 403);
-            }
-    
-            if (!$user->customer) {
-                return $this->error('Customer profile not found', 404);
-            }
-    
-            // Get all requirements for this service
-            $serviceRequirements = ServiceRequirement::where('service_id', $request->service_id)->get();
-    
-            // Prepare validation rules
-            $validatorRules = [
-                'service_id' => 'required|exists:services,id',
-                'latitude' => 'required|numeric',
-                'longitude' => 'required|numeric',
-                'phone' => 'required|string',
-                'gender' => 'required|in:male,female',
-                'additional_info' => 'nullable|string',
-                'requirements' => 'required|array|size:' . $serviceRequirements->count(),
-            ];
-    
-            // Custom validation for each requirement
-            $validator = Validator::make($request->all(), $validatorRules, [
-                'requirements.size' => 'All service requirements must be provided'
-            ]);
-    
-            // Manually validate each requirement
-            foreach ($request->requirements as $index => $requirement) {
-                $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
-                
-                if (!$serviceRequirement) {
-                    $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
-                    continue;
-                }
-    
-                if ($serviceRequirement->type === 'file') {
-                    if (!isset($requirement['value']) || !is_array($requirement['value'])) {
-                        $validator->errors()->add("requirements.$index", 'File information is required for this requirement');
-                    }
-                } else {
-                    if (!isset($requirement['value']) || empty($requirement['value'])) {
-                        $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
-                    }
-                }
-            }
-    
-            if ($validator->fails()) {
-                return $this->error($validator->errors()->first(), 422);
-            }
-    
-            DB::beginTransaction();
-    
-            try {
-                $serviceRequest = ServiceRequest::create([
-                    'customer_id' => $user->customer->id,
-                    'service_id' => $request->service_id,
-                    'phone' => $request->phone,
-                    'latitude' => $request->latitude,
-                    'longitude' => $request->longitude,
-                    'additional_info' => $request->additional_info,
-                    'gender' => $request->gender,
-                    'status' => 'pending',
-                    'current_search_radius' => 1,
-                    'expansion_attempts' => 0
-                ]);
-    
-                foreach ($request->requirements as $requirementData) {
-                    $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
-    
-                    $filePath = null;
-                    $value = null;
-    
-                    if ($serviceRequirement->type === 'file') {
-                        // For file uploads via API, we expect the actual file to be sent in FormData
-                        // with the key as "file_{requirement_id}"
-                        $fileKey = 'file_' . $requirementData['requirement_id'];
-                        
-                        if ($request->hasFile($fileKey)) {
-                            $filePath = $request->file($fileKey)->store('request_requirements', 'public');
-                        } else {
-                            throw new \Exception("File not found for requirement ID: " . $requirementData['requirement_id']);
-                        }
-                    } else {
-                        $value = $requirementData['value'];
-                    }
-    
-                    RequestRequirement::create([
-                        'request_id' => $serviceRequest->id,
-                        'service_requirement_id' => $requirementData['requirement_id'],
-                        'value' => $value,
-                        'file_path' => $filePath
-                    ]);
-                }
-    
-                // Start with 1 km radius
-                $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 1);
-    
-                if ($notifiedCount === 0) {
-                    // No providers at 1 km, try 3 km immediately
-                    $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 3);
-                    $serviceRequest->update(['current_search_radius' => 3]);
-    
-                    if ($notifiedCount === 0) {
-                        // Still no providers, try 5 km immediately
-                        $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 5);
-                        $serviceRequest->update(['current_search_radius' => 5]);
-    
-                        if ($notifiedCount === 0) {
-                            DB::rollBack();
-                            return $this->error('No available providers found for this service in your area', 400);
-                        }
-                    }
-                } else {
-                    // Found providers at 1 km, schedule expansion job
-                    Log::channel('request_expansion')->info('Scheduling request expansion job', [
-                        'request_id' => $serviceRequest->id,
-                        'providers_notified' => $notifiedCount,
-                    ]);
-                    ExpandRequestSearchRadius::dispatch($serviceRequest, 1)
-                        ->delay(now()->addSeconds(10))
-                        ->onQueue('request_expansion');
-                }
-    
-                DB::commit();
-    
-                return $this->success([
-                    'request' => $serviceRequest,
-                    'message' => 'Request created successfully'
-                ]);
-            } catch (\Exception $e) {
-                DB::rollBack();
-                return $this->error('Failed to create request: ' . $e->getMessage(), 500);
-            }
-        } catch (\Exception $e) {
-            return $this->error('Failed to process request: ' . $e->getMessage(), 500);
+{
+    try {
+        $user = Auth::user();
+
+        if ($user->user_type !== 'customer') {
+            return $this->error('Only customers can create requests', 403);
         }
+
+        if (!$user->customer) {
+            return $this->error('Customer profile not found', 404);
+        }
+
+        // Get all requirements for this service
+        $serviceRequirements = ServiceRequirement::where('service_id', $request->service_id)->get();
+
+        // Decode JSON requirements if they come as string
+        $requirements = $request->requirements;
+        if (is_string($requirements)) {
+            try {
+                $requirements = json_decode($requirements, true, 512, JSON_THROW_ON_ERROR);
+                $request->merge(['requirements' => $requirements]);
+            } catch (\JsonException $e) {
+                return $this->error('Invalid requirements format', 422);
+            }
+        }
+
+        // Prepare validation rules
+        $validatorRules = [
+            'service_id' => 'required|exists:services,id',
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+            'phone' => 'required|string',
+            'gender' => 'required|in:male,female',
+            'additional_info' => 'nullable|string',
+            'name' => 'required|string',
+            'age' => 'required|string',
+            'requirements' => 'required|array|size:' . $serviceRequirements->count(),
+        ];
+
+        // Custom validation for each requirement
+        $validator = Validator::make($request->all(), $validatorRules, [
+            'requirements.size' => 'All service requirements must be provided'
+        ]);
+
+        // Manually validate each requirement
+        foreach ($request->requirements as $index => $requirement) {
+            if (!is_array($requirement)) {
+                $validator->errors()->add("requirements.$index", 'Invalid requirement format');
+                continue;
+            }
+
+            $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
+            
+            if (!$serviceRequirement) {
+                $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
+                continue;
+            }
+
+            if ($serviceRequirement->type === 'file') {
+                $fileKey = 'file_' . $requirement['requirement_id'];
+                if (!$request->hasFile($fileKey)) {
+                    $validator->errors()->add("requirements.$index", 'File upload is required for this requirement');
+                }
+            } else {
+                if (!isset($requirement['value']) || empty(trim($requirement['value'] ?? ''))) {
+                    $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
+                }
+            }
+        }
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $serviceRequest = ServiceRequest::create([
+                'customer_id' => $user->customer->id,
+                'service_id' => $request->service_id,
+                'phone' => $request->phone,
+                'latitude' => $request->latitude,
+                'longitude' => $request->longitude,
+                'additional_info' => $request->additional_info,
+                'gender' => $request->gender,
+                'name' => $request->name,
+                'age' => $request->age,
+                'status' => 'pending',
+                'current_search_radius' => 1,
+                'expansion_attempts' => 0
+            ]);
+
+            foreach ($request->requirements as $requirementData) {
+                $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
+
+                $filePath = null;
+                $value = null;
+
+                if ($serviceRequirement->type === 'file') {
+                    $fileKey = 'file_' . $requirementData['requirement_id'];
+                    if ($request->hasFile($fileKey)) {
+                        $filePath = $request->file($fileKey)->store('request_requirements', 'public');
+                    }
+                } else {
+                    $value = $requirementData['value'];
+                }
+
+                RequestRequirement::create([
+                    'request_id' => $serviceRequest->id,
+                    'service_requirement_id' => $requirementData['requirement_id'],
+                    'value' => $value,
+                    'file_path' => $filePath
+                ]);
+            }
+
+            // Provider notification logic
+            $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 1);
+
+            if ($notifiedCount === 0) {
+                $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 3);
+                $serviceRequest->update(['current_search_radius' => 3]);
+
+                if ($notifiedCount === 0) {
+                    $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 5);
+                    $serviceRequest->update(['current_search_radius' => 5]);
+
+                    if ($notifiedCount === 0) {
+                        DB::rollBack();
+                        return $this->error('No available providers found for this service in your area', 400);
+                    }
+                }
+            } else {
+                Log::channel('request_expansion')->info('Scheduling request expansion job', [
+                    'request_id' => $serviceRequest->id,
+                    'providers_notified' => $notifiedCount,
+                ]);
+                ExpandRequestSearchRadius::dispatch($serviceRequest, 1)
+                    ->delay(now()->addSeconds(10))
+                    ->onQueue('request_expansion');
+            }
+
+            DB::commit();
+
+            return $this->success([
+                'request' => $serviceRequest,
+                'message' => 'Request created successfully'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Request creation failed: ' . $e->getMessage());
+            return $this->error('Failed to create request: ' . $e->getMessage(), 500);
+        }
+    } catch (\Exception $e) {
+        Log::error('Request processing failed: ' . $e->getMessage());
+        return $this->error('Failed to process request: ' . $e->getMessage(), 500);
     }
+}
 
 
 
