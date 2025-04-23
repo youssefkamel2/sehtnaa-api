@@ -42,7 +42,7 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-    
+
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can create requests', 403);
             }
@@ -63,22 +63,32 @@ class RequestController extends Controller
                 'gender' => 'required|in:male,female',
                 'additional_info' => 'nullable|string',
                 'requirements' => 'required|array|size:' . $serviceRequirements->count(),
-                'requirements.*.requirement_id' => 'required|exists:service_requirements,id',
             ];
     
-            // Add dynamic validation for each requirement
-            foreach ($serviceRequirements as $requirement) {
-                $rule = $requirement->type === 'file' 
-                    ? 'required|file|mimes:jpg,jpeg,png,pdf,doc,docx|max:2048'
-                    : 'required|string|max:255';
-    
-                $validatorRules['requirements.*.value'] = $rule;
-            }
-    
+            // Custom validation for each requirement
             $validator = Validator::make($request->all(), $validatorRules, [
-                'requirements.size' => 'All service requirements must be provided',
-                'requirements.*.value.required' => 'This requirement field is required'
+                'requirements.size' => 'All service requirements must be provided'
             ]);
+    
+            // Manually validate each requirement
+            foreach ($request->requirements as $index => $requirement) {
+                $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
+                
+                if (!$serviceRequirement) {
+                    $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
+                    continue;
+                }
+    
+                if ($serviceRequirement->type === 'file') {
+                    if (!isset($requirement['file'])) {
+                        $validator->errors()->add("requirements.$index", 'File is required for this requirement');
+                    }
+                } else {
+                    if (!isset($requirement['value']) || empty($requirement['value'])) {
+                        $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
+                    }
+                }
+            }
     
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
@@ -100,7 +110,6 @@ class RequestController extends Controller
                     'expansion_attempts' => 0
                 ]);
     
-                // Process each requirement
                 foreach ($request->requirements as $requirementData) {
                     $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
     
