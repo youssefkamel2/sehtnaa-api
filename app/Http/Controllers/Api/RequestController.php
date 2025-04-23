@@ -38,22 +38,29 @@ class RequestController extends Controller
         $this->providerNotifier = $providerNotifier;
     }
 
+
     public function createRequest(Request $request)
     {
         try {
             $user = Auth::user();
-    
+
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can create requests', 403);
             }
-    
+
             if (!$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-    
+
             // Get all requirements for this service
-            $serviceRequirements = ServiceRequirement::where('service_id', $request->service_id)->get();
-    
+            $serviceRequirements = ServiceRequirement::where('service_id', $request->service_id)
+                ->orderBy('id')
+                ->get();
+
+            if ($serviceRequirements->isEmpty()) {
+                return $this->error('No requirements found for this service', 404);
+            }
+
             // Prepare validation rules
             $validatorRules = [
                 'service_id' => 'required|exists:services,id',
@@ -64,38 +71,47 @@ class RequestController extends Controller
                 'additional_info' => 'nullable|string',
                 'requirements' => 'required|array|size:' . $serviceRequirements->count(),
             ];
-    
+
             // Custom validation for each requirement
             $validator = Validator::make($request->all(), $validatorRules, [
                 'requirements.size' => 'All service requirements must be provided'
             ]);
-    
+
+            // Validate requirement IDs match service requirements
+            $requirementIds = collect($request->requirements)->pluck('requirement_id');
+            $missingRequirements = $serviceRequirements->pluck('id')->diff($requirementIds);
+
+            if ($missingRequirements->isNotEmpty()) {
+                return $this->error('Missing requirements: ' . $missingRequirements->implode(', '), 422);
+            }
+
             // Manually validate each requirement
             foreach ($request->requirements as $index => $requirement) {
-                $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
-                
+                $serviceRequirement = $serviceRequirements->firstWhere('id', $requirement['requirement_id']);
+
                 if (!$serviceRequirement) {
                     $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
                     continue;
                 }
-    
+
                 if ($serviceRequirement->type === 'file') {
-                    if (!isset($requirement['value']) || !is_array($requirement['value'])) {
-                        $validator->errors()->add("requirements.$index", 'File information is required for this requirement');
+                    $fileKey = 'file_' . $requirement['requirement_id'];
+                    if (!$request->hasFile($fileKey)) {
+                        $validator->errors()->add("requirements.$index", 'File upload is required for requirement ID: ' . $requirement['requirement_id']);
                     }
                 } else {
-                    if (!isset($requirement['value']) || empty($requirement['value'])) {
-                        $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
+                    if (!isset($requirement['value']) || empty(trim($requirement['value']))) {
+                        $validator->errors()->add("requirements.$index", 'Value is required for requirement ID: ' . $requirement['requirement_id']);
                     }
                 }
             }
-    
+
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-    
+
             DB::beginTransaction();
-    
+
             try {
                 $serviceRequest = ServiceRequest::create([
                     'customer_id' => $user->customer->id,
@@ -109,27 +125,24 @@ class RequestController extends Controller
                     'current_search_radius' => 1,
                     'expansion_attempts' => 0
                 ]);
-    
+
                 foreach ($request->requirements as $requirementData) {
-                    $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
-    
+                    $serviceRequirement = $serviceRequirements->firstWhere('id', $requirementData['requirement_id']);
+
                     $filePath = null;
                     $value = null;
-    
+
                     if ($serviceRequirement->type === 'file') {
-                        // For file uploads via API, we expect the actual file to be sent in FormData
-                        // with the key as "file_{requirement_id}"
                         $fileKey = 'file_' . $requirementData['requirement_id'];
-                        
-                        if ($request->hasFile($fileKey)) {
-                            $filePath = $request->file($fileKey)->store('request_requirements', 'public');
-                        } else {
-                            throw new \Exception("File not found for requirement ID: " . $requirementData['requirement_id']);
+                        $file = $request->file($fileKey);
+
+                        if ($file) {
+                            $filePath = $file->store('request_requirements', 'public');
                         }
                     } else {
-                        $value = $requirementData['value'];
+                        $value = trim($requirementData['value']);
                     }
-    
+
                     RequestRequirement::create([
                         'request_id' => $serviceRequest->id,
                         'service_requirement_id' => $requirementData['requirement_id'],
@@ -137,27 +150,24 @@ class RequestController extends Controller
                         'file_path' => $filePath
                     ]);
                 }
-    
-                // Start with 1 km radius
+
+                // Provider notification logic
                 $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 1);
-    
+
                 if ($notifiedCount === 0) {
-                    // No providers at 1 km, try 3 km immediately
                     $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 3);
                     $serviceRequest->update(['current_search_radius' => 3]);
-    
+
                     if ($notifiedCount === 0) {
-                        // Still no providers, try 5 km immediately
                         $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 5);
                         $serviceRequest->update(['current_search_radius' => 5]);
-    
+
                         if ($notifiedCount === 0) {
                             DB::rollBack();
                             return $this->error('No available providers found for this service in your area', 400);
                         }
                     }
                 } else {
-                    // Found providers at 1 km, schedule expansion job
                     Log::channel('request_expansion')->info('Scheduling request expansion job', [
                         'request_id' => $serviceRequest->id,
                         'providers_notified' => $notifiedCount,
@@ -166,18 +176,23 @@ class RequestController extends Controller
                         ->delay(now()->addSeconds(10))
                         ->onQueue('request_expansion');
                 }
-    
+
                 DB::commit();
-    
+
                 return $this->success([
                     'request' => $serviceRequest,
                     'message' => 'Request created successfully'
                 ]);
             } catch (\Exception $e) {
                 DB::rollBack();
-                return $this->error('Failed to create request: ' . $e->getMessage(), 500);
+                Log::error('Request creation failed: ' . $e->getMessage(), [
+                    'exception' => $e,
+                    'request_data' => $request->all()
+                ]);
+                return $this->error('Failed to create request: ' . $e->getMessage(), 400);
             }
         } catch (\Exception $e) {
+            Log::error('Request processing failed: ' . $e->getMessage());
             return $this->error('Failed to process request: ' . $e->getMessage(), 500);
         }
     }
