@@ -113,8 +113,7 @@ class CustomerController extends Controller
                         'provider' => $request->assignedProvider ? [
                             'id' => $request->assignedProvider->id,
                             'name' => $request->assignedProvider->user->first_name . ' ' . $request->assignedProvider->user->last_name,
-                            'avatar' => $request->assignedProvider->user->profile_image ? asset('storage/' . $request->assignedProvider->user->profile_image) : null,
-                            'status' => $request->status
+                            'image' => $request->assignedProvider->user->profile_image ? $request->assignedProvider->user->profile_image : null
                         ] : null
                     ];
                 });
