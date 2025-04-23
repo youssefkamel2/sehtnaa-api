@@ -17,10 +17,10 @@ class CategoryController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             $categories = Category::with('addedBy')
                 ->ordered()
-                ->when($user->user_type !== 'admin', function($query) {
+                ->when($user->user_type !== 'admin', function ($query) {
                     return $query->where('is_active', true);
                 })
                 ->get();
@@ -108,7 +108,7 @@ class CategoryController extends Controller
 
         try {
             $category = Category::find($id);
-            
+
             if (!$category) {
                 return $this->error('Category not found', 404);
             }
@@ -135,7 +135,7 @@ class CategoryController extends Controller
                     $oldIconPath = str_replace('/storage', 'public', $category->icon);
                     Storage::delete($oldIconPath);
                 }
-                
+
                 $iconPath = $request->file('icon')->store('category_icons', 'public');;
                 $updateData['icon'] = $iconPath;
             }
@@ -203,7 +203,7 @@ class CategoryController extends Controller
     public function getCategoryServices(Request $request, $id)
     {
         try {
-            $category = Category::find($id);
+            $category = Category::with(['services.requirements'])->find($id);
 
             if (!$category) {
                 return $this->error('Category not found', 404);
@@ -218,16 +218,28 @@ class CategoryController extends Controller
                         'name' => $service->name,
                         'description' => $service->description,
                         'price' => $service->price,
-                        'status' => $service->is_active ? 'Active' : 'de-active',
-                        'icon' => $service->icon,
-                        'cover_photo' => $service->cover_photo
+                        'status' => $service->is_active ? 'Active' : 'Inactive',
+                        'icon' => $service->icon ? asset('storage/' . $service->icon) : null,
+                        'cover_photo' => $service->cover_photo ? asset('storage/' . $service->cover_photo) : null,
+                        'requirements' => $service->requirements->map(function ($requirement) {
+                            return [
+                                'id' => $requirement->id,
+                                'name' => $requirement->name,
+                                'type' => $requirement->type,
+                            ];
+                        })
                     ];
                 });
 
-            return $this->success($services, 'Category services fetched successfully');
+            return $this->success([
+                'category' => [
+                    'id' => $category->id,
+                    'name' => $category->name
+                ],
+                'services' => $services
+            ], 'Category services with requirements fetched successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to fetch category services: ' . $e->getMessage(), 500);
         }
     }
-
 }
