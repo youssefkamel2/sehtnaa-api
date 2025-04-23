@@ -42,7 +42,7 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-
+    
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can create requests', 403);
             }
@@ -80,8 +80,8 @@ class RequestController extends Controller
                 }
     
                 if ($serviceRequirement->type === 'file') {
-                    if (!isset($requirement['file'])) {
-                        $validator->errors()->add("requirements.$index", 'File is required for this requirement');
+                    if (!isset($requirement['value']) || !is_array($requirement['value'])) {
+                        $validator->errors()->add("requirements.$index", 'File information is required for this requirement');
                     }
                 } else {
                     if (!isset($requirement['value']) || empty($requirement['value'])) {
@@ -117,7 +117,15 @@ class RequestController extends Controller
                     $value = null;
     
                     if ($serviceRequirement->type === 'file') {
-                        $filePath = $requirementData['file']->store('request_requirements', 'public');
+                        // For file uploads via API, we expect the actual file to be sent in FormData
+                        // with the key as "file_{requirement_id}"
+                        $fileKey = 'file_' . $requirementData['requirement_id'];
+                        
+                        if ($request->hasFile($fileKey)) {
+                            $filePath = $request->file($fileKey)->store('request_requirements', 'public');
+                        } else {
+                            throw new \Exception("File not found for requirement ID: " . $requirementData['requirement_id']);
+                        }
                     } else {
                         $value = $requirementData['value'];
                     }
