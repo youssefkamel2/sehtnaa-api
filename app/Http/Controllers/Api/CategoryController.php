@@ -219,8 +219,8 @@ class CategoryController extends Controller
                         'description' => $service->description,
                         'price' => $service->price,
                         'status' => $service->is_active ? 'Active' : 'Inactive',
-                        'icon' => $service->icon ? asset('storage/' . $service->icon) : null,
-                        'cover_photo' => $service->cover_photo ? asset('storage/' . $service->cover_photo) : null,
+                        'icon' => $service->icon ? $service->icon : null,
+                        'cover_photo' => $service->cover_photo ? $service->cover_photo : null,
                         'requirements' => $service->requirements->map(function ($requirement) {
                             return [
                                 'id' => $requirement->id,
