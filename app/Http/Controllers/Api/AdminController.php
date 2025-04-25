@@ -179,7 +179,6 @@ class AdminController extends Controller
             return $this->error('Only super admins can manage admin status.', 403);
         }
 
-
         try {
 
             $validator = Validator::make($request->all(), [
@@ -190,8 +189,6 @@ class AdminController extends Controller
                 return $this->error($validator->errors()->first(), 400);
             }
             $user = User::where('email', $request->email)->first();
-
-        echo$user->last_invalidated_at;die;
 
             if (!$user) {
                 return $this->error('Admin not found.', 404);
@@ -210,7 +207,9 @@ class AdminController extends Controller
             ]);
 
             // delete this admin tokens
+            JWTAuth::setToken($user->current_token)->invalidate();
 
+            
             return $this->success(
                 ['status' => $user->status],
                 'Admin status updated successfully'
