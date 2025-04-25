@@ -28,8 +28,6 @@ class JwtAuthenticate extends Authenticate
             
             // Then get the authenticated user
             $user = auth()->user();
-
-            return $user;die;
             
             // Check if user is deactivated
             if ($user && $user->status === 'de-active') {

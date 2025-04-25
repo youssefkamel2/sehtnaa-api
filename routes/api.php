@@ -37,7 +37,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
 
 });
 
-Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'jwt.auth'])->group(function () {
+Route::prefix('admin')->middleware(['auth:api', 'role:admin'])->group(function () {
     Route::get('/', [AdminController::class,'index']);
     Route::post('/create-admin', [AdminController::class, 'createAdmin']);
     Route::post('/update-admin', [AdminController::class, 'updateAdmin']);
