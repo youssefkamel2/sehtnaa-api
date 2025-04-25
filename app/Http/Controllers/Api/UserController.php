@@ -27,7 +27,7 @@ class UserController extends Controller
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
             // 'email' => 'sometimes|email|unique:users,email,'.$user->id,
-            'phone' => 'sometimes|string|unique:users,phone,'.$user->id,
+            'phone' => 'sometimes|string|unique:users,phone,' . $user->id,
             'address' => 'sometimes|string',
             'gender' => 'sometimes|in:male,female'
         ]);
@@ -191,6 +191,7 @@ class UserController extends Controller
                     // Dispatch jobs for each notification
                     foreach ($logs as $log) {
                         SendNotificationCampaign::dispatch($log['campaign_id'], $log['user_id'])
+                            ->onQueue('notifications') // Explicit queue assignment
                             ->delay($request->schedule_at ?? null);
                     }
                 });
@@ -208,7 +209,6 @@ class UserController extends Controller
                 'status' => 'queued',
                 'schedule_at' => $request->schedule_at
             ], 'Notification campaign started successfully');
-
         } catch (\Exception $e) {
             return $this->error('Failed to start notification campaign: ' . $e->getMessage(), 500);
         }
@@ -250,7 +250,6 @@ class UserController extends Controller
             });
 
             return $this->success($campaigns, 'Campaigns retrieved successfully');
-
         } catch (\Exception $e) {
             return $this->error('Failed to get campaigns: ' . $e->getMessage(), 500);
         }
@@ -260,16 +259,16 @@ class UserController extends Controller
     {
         try {
             $campaign = NotificationLog::select([
-                    'campaign_id',
-                    'title',
-                    'body',
-                    'user_type',
-                    DB::raw('MIN(created_at) as created_at'),
-                    DB::raw('COUNT(*) as total_notifications'),
-                    DB::raw('SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count'),
-                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count >= ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as failed_count'),
-                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count < ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as pending_count')
-                ])
+                'campaign_id',
+                'title',
+                'body',
+                'user_type',
+                DB::raw('MIN(created_at) as created_at'),
+                DB::raw('COUNT(*) as total_notifications'),
+                DB::raw('SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count'),
+                DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count >= ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as failed_count'),
+                DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count < ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as pending_count')
+            ])
                 ->where('campaign_id', $campaignId)
                 ->groupBy('campaign_id', 'title', 'body', 'user_type')
                 ->firstOrFail();
@@ -284,7 +283,6 @@ class UserController extends Controller
                 'campaign' => $campaign,
                 'notifications' => $notifications
             ], 'Campaign details retrieved successfully');
-
         } catch (\Exception $e) {
             return $this->error('Failed to get campaign details: ' . $e->getMessage(), 500);
         }
