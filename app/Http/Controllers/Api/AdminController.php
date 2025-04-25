@@ -208,7 +208,7 @@ class AdminController extends Controller
 
             $token = JWTAuth::fromUser($user);
 
-            dd($token);die;
+            return ($token);die;
             // Immediately invalidate it
             JWTAuth::setToken($token)->invalidate();
 
