@@ -17,9 +17,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('queue:work --queue=request_expansion --tries=3 --sleep=3 --timeout=60 --stop-when-empty')
             ->everyMinute()
             ->withoutOverlapping()
-            ->appendOutputTo(storage_path('logs/request-expansion.log'))
+            ->appendOutputTo(storage_path('logs/request_expansion.log'))
             ->onSuccess(function () {
-                $output = file_get_contents(storage_path('logs/request-expansion.log'));
+                $output = file_get_contents(storage_path('logs/request_expansion.log'));
                 $processedJobs = substr_count($output, 'Processed:');
                 $failedJobs = substr_count($output, 'Failed:');
 
@@ -29,10 +29,10 @@ class Kernel extends ConsoleKernel
                     'output' => $output
                 ]);
 
-                file_put_contents(storage_path('logs/request-expansion.log'), '');
+                file_put_contents(storage_path('logs/request_expansion.log'), '');
             })
             ->onFailure(function () {
-                $error = file_get_contents(storage_path('logs/request-expansion.log'));
+                $error = file_get_contents(storage_path('logs/request_expansion.log'));
                 Log::channel('scheduler')->error('Request expansion queue processing failed', [
                     'error' => $error
                 ]);
