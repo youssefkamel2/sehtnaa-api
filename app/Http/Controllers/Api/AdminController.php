@@ -213,7 +213,7 @@ class AdminController extends Controller
             JWTAuth::invalidate($token);
 
             return $this->success(
-                ['status' => $user->status],
+                ['status' => $user->status, 'token' => $token],
                 'Admin status updated successfully'
             );
         } catch (\Exception $e) {
