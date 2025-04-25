@@ -191,7 +191,7 @@ class AdminController extends Controller
             }
             $user = User::where('email', $request->email)->first();
 
-        print_r($user->last_invalidated_at);die;
+        echo$user->last_invalidated_at;die;
 
             if (!$user) {
                 return $this->error('Admin not found.', 404);
