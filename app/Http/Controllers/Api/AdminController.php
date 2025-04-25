@@ -206,10 +206,6 @@ class AdminController extends Controller
                 'status' => $user->status === 'active' ? 'de-active' : 'active'
             ]);
 
-            // delete this admin tokens
-            JWTAuth::setToken($user->current_token)->invalidate();
-
-            
             return $this->success(
                 ['status' => $user->status],
                 'Admin status updated successfully'
