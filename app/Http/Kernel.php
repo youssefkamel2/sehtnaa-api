@@ -70,6 +70,7 @@ class Kernel extends HttpKernel
         'auth' => \App\Http\Middleware\Authenticate::class,
         'auth.api' => \App\Http\Middleware\Authenticate::class,
         'role' => \App\Http\Middleware\RoleMiddleware::class,
+        'check.status' => \App\Http\Middleware\CheckUserStatus::class,
         // Other middleware...
     ];
 }
