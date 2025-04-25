@@ -545,6 +545,34 @@ class ProviderController extends Controller
 
         if ($allApproved && !$hasMissing) {
             $user->update(['status' => 'active']);
+
+
+
+
+            if (empty($provider->user->fcm_token)) {
+                Log::channel('fcm_errors')->warning('No FCM token for provider', [
+                    'provider_id' => $provider->id
+                ]);
+                return false;
+            }
+
+
+            $response = $this->firebaseService->sendToDevice(
+                $provider->user->fcm_token,
+                'Account Approved',
+                'Your account has been approved.'
+            );
+
+            if (!isset($response['success']) || $response['success'] === 0) {
+                throw new \Exception($response['results'][0]['error'] ?? 'Unknown FCM error');
+            }
+
+            Log::channel('fcm_errors')->info('Request acceptance notification sent', [
+                'provider_id' => $provider->id,
+                'response' => $response
+            ]);
+
+
             Log::info('Provider activated', ['provider_id' => $provider->id]);
         }
     }
