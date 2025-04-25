@@ -22,8 +22,6 @@ class SendNotificationCampaign implements ShouldQueue
     protected $campaignId;
     protected $userId;
 
-    public $queue = 'notifications';
-
     public function __construct(string $campaignId, int $userId)
     {
         $this->campaignId = $campaignId;
