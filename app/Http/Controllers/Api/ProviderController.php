@@ -546,16 +546,13 @@ class ProviderController extends Controller
         if ($allApproved && !$hasMissing) {
             $user->update(['status' => 'active']);
 
-
-
-
+            // send notification
             if (empty($provider->user->fcm_token)) {
                 Log::channel('fcm_errors')->warning('No FCM token for provider', [
                     'provider_id' => $provider->id
                 ]);
                 return false;
             }
-
 
             $response = $this->firebaseService->sendToDevice(
                 $provider->user->fcm_token,

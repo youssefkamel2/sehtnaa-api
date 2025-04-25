@@ -206,6 +206,9 @@ class AdminController extends Controller
                 'status' => $user->status === 'active' ? 'de-active' : 'active'
             ]);
 
+            // delete this admin tokens
+            $user->tokens()->delete();
+
             return $this->success(
                 ['status' => $user->status],
                 'Admin status updated successfully'
