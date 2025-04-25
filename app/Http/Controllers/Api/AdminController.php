@@ -206,7 +206,6 @@ class AdminController extends Controller
                 'status' => $user->status === 'active' ? 'de-active' : 'active'
             ]);
 
-            $token = JWTAuth::fromUser($user); // Generate token for this user
             JWTAuth::setToken(JWTAuth::fromUser($user))->invalidate(true);
 
             return $this->success(
