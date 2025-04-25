@@ -49,8 +49,8 @@ class SendNotificationCampaign implements ShouldQueue
             $errorMessage = "Notification log not found";
             Log::channel('notifications')->error($errorMessage, [
                 'campaign_id' => $this->campaignId,
-                'user_id' => $this->userId,
-                'job_id' => $this->job->getJobId() ?? null,
+                'user_id' => $this->userId
+                
             ]);
             
             // Also log to fcm_errors for easier tracking
