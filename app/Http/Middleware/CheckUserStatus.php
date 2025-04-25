@@ -16,11 +16,11 @@ class CheckUserStatus
         $user = auth()->user();
 
         if (!$user) {
-            return $this->error('Unauthorized', 401);
+            return $this->error('Unauthorized access. Please log in.', 401);
         }
 
         if ($user->status === 'de-active') {
-            return $this->error('Your account has been deactivated', 401);
+            return $this->error('Unauthorized access. Please log in.', 401);
         }
 
         return $next($request);
