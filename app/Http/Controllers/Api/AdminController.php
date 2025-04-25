@@ -207,7 +207,7 @@ class AdminController extends Controller
             ]);
 
             $token = JWTAuth::fromUser($user); // Generate token for this user
-            JWTAuth::setToken($token)->invalidate();
+            JWTAuth::setToken(JWTAuth::fromUser($user))->invalidate(true);
 
             return $this->success(
                 ['status' => $user->status],
