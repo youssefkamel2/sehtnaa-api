@@ -206,14 +206,11 @@ class AdminController extends Controller
                 'status' => $user->status === 'active' ? 'de-active' : 'active'
             ]);
 
-            $token = JWTAuth::fromUser($user);
-
-            // return ($token);die;
-            // Immediately invalidate it
-            JWTAuth::invalidate($token);
+            $token = JWTAuth::fromUser($user); // Generate token for this user
+            JWTAuth::setToken($token)->invalidate();
 
             return $this->success(
-                ['status' => $user->status, 'token' => $token],
+                ['status' => $user->status],
                 'Admin status updated successfully'
             );
         } catch (\Exception $e) {
