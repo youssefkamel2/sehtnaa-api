@@ -153,7 +153,7 @@ class UserController extends Controller
             ]);
     
             if ($validator->fails()) {
-                
+
                 return $this->error($validator->errors()->first(), 422);
             }
     
@@ -207,7 +207,6 @@ class UserController extends Controller
                             Log::channel('job_processing')->debug('Job dispatched', [
                                 'campaign_id' => $log['campaign_id'],
                                 'user_id' => $log['user_id'],
-                                'job_id' => $job->getJobId(),
                                 'queue' => 'notifications',
                                 'scheduled_at' => $request->schedule_at ?? 'immediately',
                             ]);
