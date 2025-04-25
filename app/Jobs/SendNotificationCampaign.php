@@ -28,8 +28,7 @@ class SendNotificationCampaign implements ShouldQueue
         $this->userId = $userId;
         Log::channel('job_processing')->debug('Job created', [
             'campaign_id' => $campaignId,
-            'user_id' => $userId,
-            'job_id' => $this->job->getJobId() ?? null,
+            'user_id' => $userId
         ]);
     }
 
