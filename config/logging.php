@@ -77,10 +77,25 @@ return [
             'level' => 'debug',
         ],
         
-        'fcm_errors' => [
-            'driver' => 'single',
-            'path' => storage_path('logs/fcm_errors.log'),
+        'fcm_debug' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/fcm_debug.log'),
             'level' => 'debug',
+            'days' => 7,
+        ],
+    
+        'fcm_errors' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/fcm_errors.log'),
+            'level' => 'error',
+            'days' => 14,
+        ],
+        
+        'job_processing' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/job_processing.log'),
+            'level' => env('APP_DEBUG') ? 'debug' : 'info',
+            'days' => 7,
         ],
 
         'provider_matching' => [

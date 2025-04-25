@@ -26,19 +26,42 @@ class SendNotificationCampaign implements ShouldQueue
     {
         $this->campaignId = $campaignId;
         $this->userId = $userId;
+        Log::channel('job_processing')->debug('Job created', [
+            'campaign_id' => $campaignId,
+            'user_id' => $userId,
+            'job_id' => $this->job->getJobId() ?? null,
+        ]);
     }
 
     public function handle(FirebaseService $firebaseService)
     {
+
+        Log::channel('job_processing')->debug('Job processing started', [
+            'campaign_id' => $this->campaignId,
+            'user_id' => $this->userId,
+            'attempt' => $this->attempts(),
+        ]);
+
         $notificationLog = NotificationLog::where('campaign_id', $this->campaignId)
             ->where('user_id', $this->userId)
             ->first();
 
         if (!$notificationLog) {
-            Log::channel('notifications')->error("Notification log not found", [
+            $errorMessage = "Notification log not found";
+            Log::channel('notifications')->error($errorMessage, [
                 'campaign_id' => $this->campaignId,
-                'user_id' => $this->userId
+                'user_id' => $this->userId,
+                'job_id' => $this->job->getJobId() ?? null,
             ]);
+            
+            // Also log to fcm_errors for easier tracking
+            Log::channel('fcm_errors')->error($errorMessage, [
+                'type' => 'missing_notification_log',
+                'campaign_id' => $this->campaignId,
+                'user_id' => $this->userId,
+            ]);
+            
+
             return;
         }
 
@@ -53,9 +76,24 @@ class SendNotificationCampaign implements ShouldQueue
 
             // Check if device token still exists
             if (empty($notificationLog->device_token)) {
-                $this->handleFailure($notificationLog, 'Device token no longer available');
+                $errorMessage = 'Device token no longer available';
+                $this->handleFailure($notificationLog, $errorMessage);
+                Log::channel('fcm_errors')->error($errorMessage, [
+                    'type' => 'missing_device_token',
+                    'notification_id' => $notificationLog->id,
+                    'user_id' => $this->userId,
+                ]);
+                
                 return;
             }
+
+            Log::channel('fcm_debug')->debug('Sending FCM notification', [
+                'notification_id' => $notificationLog->id,
+                'device_token' => ($notificationLog->device_token), 
+                'title' => $notificationLog->title,
+                'body' => $notificationLog->body,
+                'data' => $notificationLog->data,
+            ]);
 
             // Send notification
             $response = $firebaseService->sendToDevice(
@@ -64,6 +102,12 @@ class SendNotificationCampaign implements ShouldQueue
                 $notificationLog->body,
                 $notificationLog->data ?? []
             );
+
+            Log::channel('fcm_debug')->debug('FCM response received', [
+                'notification_id' => $notificationLog->id,
+                'response' => $response,
+                'success' => $response['success'] ?? false,
+            ]);
 
             if ($response['success']) {
                 $this->handleSuccess($notificationLog, $response);

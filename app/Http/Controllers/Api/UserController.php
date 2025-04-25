@@ -8,6 +8,7 @@ use App\Traits\ResponseTrait;
 use App\Models\NotificationLog;
 use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 use App\Jobs\SendNotificationCampaign;
@@ -140,6 +141,8 @@ class UserController extends Controller
 
     public function sendNotificationCampaign(Request $request)
     {
+        DB::beginTransaction();
+        
         try {
             $validator = Validator::make($request->all(), [
                 'title' => 'required|string|max:255',
@@ -148,23 +151,30 @@ class UserController extends Controller
                 'user_type' => 'required|in:customer,provider,admin',
                 'schedule_at' => 'nullable|date|after:now'
             ]);
-
+    
             if ($validator->fails()) {
+                
                 return $this->error($validator->errors()->first(), 422);
             }
-
+    
             $campaignId = 'camp_' . uniqid();
             $userType = $request->user_type;
             $usersCount = 0;
-
-            // Get users in batches to prevent memory issues
+    
+            Log::channel('fcm_debug')->info('Starting notification campaign', [
+                'campaign_id' => $campaignId,
+                'title' => $request->title,
+                'user_type' => $userType,
+                'scheduled_at' => $request->schedule_at ?? 'immediately',
+            ]);
+    
             User::where('user_type', $userType)
                 ->whereNotNull('fcm_token')
                 ->select(['id', 'user_type', 'fcm_token'])
                 ->chunk(200, function ($users) use ($request, $campaignId, $userType, &$usersCount) {
                     $logs = [];
                     $now = now();
-
+    
                     foreach ($users as $user) {
                         $logs[] = [
                             'campaign_id' => $campaignId,
@@ -177,29 +187,59 @@ class UserController extends Controller
                             'attempt_logs' => json_encode([[
                                 'status' => 'queued',
                                 'timestamp' => $now->toDateTimeString(),
-                                'attempt' => 0
+                                'attempt' => 0,
+                                'queue' => 'notifications',
                             ]]),
                             'created_at' => $now,
                             'updated_at' => $now
                         ];
                         $usersCount++;
                     }
-
-                    // Bulk insert for better performance
-                    NotificationLog::insert($logs);
-
-                    // Dispatch jobs for each notification
-                    foreach ($logs as $log) {
-                        SendNotificationCampaign::dispatch($log['campaign_id'], $log['user_id'])
-                            ->onQueue('notifications') // Explicit queue assignment
-                            ->delay($request->schedule_at ?? null);
+    
+                    try {
+                        NotificationLog::insert($logs);
+                        
+                        foreach ($logs as $log) {
+                            $job = SendNotificationCampaign::dispatch($log['campaign_id'], $log['user_id'])
+                                ->onQueue('notifications')
+                                ->delay($request->schedule_at ?? null);
+                                
+                            Log::channel('job_processing')->debug('Job dispatched', [
+                                'campaign_id' => $log['campaign_id'],
+                                'user_id' => $log['user_id'],
+                                'job_id' => $job->getJobId(),
+                                'queue' => 'notifications',
+                                'scheduled_at' => $request->schedule_at ?? 'immediately',
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::channel('fcm_errors')->error('Failed to insert notification logs', [
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                            'campaign_id' => $campaignId,
+                            'batch_size' => count($logs),
+                        ]);
+                        throw $e;
                     }
                 });
-
+    
             if ($usersCount === 0) {
+                Log::channel('fcm_errors')->warning('No users with FCM tokens found', [
+                    'user_type' => $userType,
+                    'campaign_id' => $campaignId,
+                ]);
+                
+                DB::commit();
                 return $this->error('No users available with FCM tokens for the selected user type', 400);
             }
-
+    
+            DB::commit();
+            
+            Log::channel('fcm_debug')->info('Notification campaign queued successfully', [
+                'campaign_id' => $campaignId,
+                'total_recipients' => $usersCount,
+            ]);
+    
             return $this->success([
                 'campaign_id' => $campaignId,
                 'title' => $request->title,
@@ -209,7 +249,16 @@ class UserController extends Controller
                 'status' => 'queued',
                 'schedule_at' => $request->schedule_at
             ], 'Notification campaign started successfully');
+            
         } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::channel('fcm_errors')->error('Failed to start notification campaign', [
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->except(['fcm_token']),
+            ]);
+            
             return $this->error('Failed to start notification campaign: ' . $e->getMessage(), 500);
         }
     }
