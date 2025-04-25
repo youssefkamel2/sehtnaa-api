@@ -20,7 +20,7 @@ class CheckUserStatus
         }
 
         if ($user->status === 'de-active') {
-            return $this->error('Your account has been deactivated', 403);
+            return $this->error('Your account has been deactivated', 401);
         }
 
         return $next($request);
