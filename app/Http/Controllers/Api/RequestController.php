@@ -393,7 +393,7 @@ class RequestController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'rating' => 'required|string|between:1,5',
-                'comment' => 'nullable|string|max:1000',
+                'feedback' => 'nullable|string|max:1000',
             ]);
 
             // return first error only
@@ -404,7 +404,7 @@ class RequestController extends Controller
             $feedback = new RequestFeedback([
                 'user_id' => $user->id,
                 'rating' => $request->rating,
-                'comment' => $request->comment,
+                'comment' => $request->feedback,
             ]);
 
             $serviceRequest->feedbacks()->save($feedback);
