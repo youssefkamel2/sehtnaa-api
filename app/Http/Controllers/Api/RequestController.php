@@ -43,18 +43,18 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-
+    
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can create requests', 403);
             }
-
+    
             if (!$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-
+    
             // Get all requirements for this service
             $serviceRequirements = ServiceRequirement::where('service_id', $request->service_id)->get();
-
+    
             // Decode JSON requirements if they come as string
             $requirements = $request->requirements;
             if (is_string($requirements)) {
@@ -65,7 +65,7 @@ class RequestController extends Controller
                     return $this->error('Invalid requirements format', 422);
                 }
             }
-
+    
             // Prepare validation rules
             $validatorRules = [
                 'service_id' => 'required|exists:services,id',
@@ -76,46 +76,52 @@ class RequestController extends Controller
                 'additional_info' => 'nullable|string',
                 'name' => 'required|string',
                 'age' => 'required|string',
-                'requirements' => 'optional|array|size:' . $serviceRequirements->count(),
             ];
-
+    
+            // Only add requirements validation if there are service requirements
+            if ($serviceRequirements->count() > 0) {
+                $validatorRules['requirements'] = 'required|array|size:' . $serviceRequirements->count();
+            }
+    
             // Custom validation for each requirement
             $validator = Validator::make($request->all(), $validatorRules, [
                 'requirements.size' => 'All service requirements must be provided'
             ]);
-
-            // Manually validate each requirement
-            foreach ($request->requirements as $index => $requirement) {
-                if (!is_array($requirement)) {
-                    $validator->errors()->add("requirements.$index", 'Invalid requirement format');
-                    continue;
-                }
-
-                $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
-
-                if (!$serviceRequirement) {
-                    $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
-                    continue;
-                }
-
-                if ($serviceRequirement->type === 'file') {
-                    $fileKey = 'file_' . $requirement['requirement_id'];
-                    if (!$request->hasFile($fileKey)) {
-                        $validator->errors()->add("requirements.$index", 'File upload is required for this requirement');
+    
+            // Only validate individual requirements if there are service requirements
+            if ($serviceRequirements->count() > 0) {
+                foreach ($request->requirements as $index => $requirement) {
+                    if (!is_array($requirement)) {
+                        $validator->errors()->add("requirements.$index", 'Invalid requirement format');
+                        continue;
                     }
-                } else {
-                    if (!isset($requirement['value']) || empty(trim($requirement['value'] ?? ''))) {
-                        $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
+    
+                    $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
+    
+                    if (!$serviceRequirement) {
+                        $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
+                        continue;
+                    }
+    
+                    if ($serviceRequirement->type === 'file') {
+                        $fileKey = 'file_' . $requirement['requirement_id'];
+                        if (!$request->hasFile($fileKey)) {
+                            $validator->errors()->add("requirements.$index", 'File upload is required for this requirement');
+                        }
+                    } else {
+                        if (!isset($requirement['value']) || empty(trim($requirement['value'] ?? ''))) {
+                            $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
+                        }
                     }
                 }
             }
-
+    
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-
+    
             DB::beginTransaction();
-
+    
             try {
                 $serviceRequest = ServiceRequest::create([
                     'customer_id' => $user->customer->id,
@@ -131,41 +137,43 @@ class RequestController extends Controller
                     'current_search_radius' => 1,
                     'expansion_attempts' => 0
                 ]);
-
-                foreach ($request->requirements as $requirementData) {
-                    $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
-
-                    $filePath = null;
-                    $value = null;
-
-                    if ($serviceRequirement->type === 'file') {
-                        $fileKey = 'file_' . $requirementData['requirement_id'];
-                        if ($request->hasFile($fileKey)) {
-                            $filePath = $request->file($fileKey)->store('request_requirements', 'public');
+    
+                if ($serviceRequirements->count() > 0) {
+                    foreach ($request->requirements as $requirementData) {
+                        $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
+    
+                        $filePath = null;
+                        $value = null;
+    
+                        if ($serviceRequirement->type === 'file') {
+                            $fileKey = 'file_' . $requirementData['requirement_id'];
+                            if ($request->hasFile($fileKey)) {
+                                $filePath = $request->file($fileKey)->store('request_requirements', 'public');
+                            }
+                        } else {
+                            $value = $requirementData['value'];
                         }
-                    } else {
-                        $value = $requirementData['value'];
+    
+                        RequestRequirement::create([
+                            'request_id' => $serviceRequest->id,
+                            'service_requirement_id' => $requirementData['requirement_id'],
+                            'value' => $value,
+                            'file_path' => $filePath
+                        ]);
                     }
-
-                    RequestRequirement::create([
-                        'request_id' => $serviceRequest->id,
-                        'service_requirement_id' => $requirementData['requirement_id'],
-                        'value' => $value,
-                        'file_path' => $filePath
-                    ]);
                 }
-
+    
                 // Provider notification logic
                 $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 1);
-
+    
                 if ($notifiedCount === 0) {
                     $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 3);
                     $serviceRequest->update(['current_search_radius' => 3]);
-
+    
                     if ($notifiedCount === 0) {
                         $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 5);
                         $serviceRequest->update(['current_search_radius' => 5]);
-
+    
                         if ($notifiedCount === 0) {
                             DB::rollBack();
                             return $this->error('No available providers found for this service in your area', 400);
@@ -180,9 +188,9 @@ class RequestController extends Controller
                         ->delay(now()->addSeconds(10))
                         ->onQueue('request_expansion');
                 }
-
+    
                 DB::commit();
-
+    
                 return $this->success([
                     'request' => $serviceRequest,
                     'message' => 'Request created successfully'
