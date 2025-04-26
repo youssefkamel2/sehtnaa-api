@@ -76,7 +76,7 @@ class RequestController extends Controller
                 'additional_info' => 'nullable|string',
                 'name' => 'required|string',
                 'age' => 'required|string',
-                'requirements' => 'required|array|size:' . $serviceRequirements->count(),
+                'requirements' => 'optional|array|size:' . $serviceRequirements->count(),
             ];
 
             // Custom validation for each requirement
