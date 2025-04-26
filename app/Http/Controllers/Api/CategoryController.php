@@ -210,6 +210,7 @@ class CategoryController extends Controller
             }
 
             $services = $category->services()
+                ->where('is_active', true)
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($service) {
