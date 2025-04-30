@@ -1,0 +1,337 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use Carbon\Carbon;
+use App\Models\Service;
+use App\Models\Category;
+use App\Models\Customer;
+use App\Models\Provider;
+use App\Models\Complaint;
+use Illuminate\Http\Request;
+use App\Traits\ResponseTrait;
+use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\ServicesAnalyticsExport;
+use App\Exports\CustomersAnalyticsExport;
+use App\Models\Request as ServiceRequest;
+use Illuminate\Support\Facades\Validator;
+
+class AnalyticsController extends Controller
+{
+    use ResponseTrait;
+
+    // Customer Analytics
+    public function customerAnalytics(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+    
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+    
+        $startDate = Carbon::parse($request->start_date)->startOfDay();
+        $endDate = Carbon::parse($request->end_date)->endOfDay();
+    
+        // Basic metrics
+        $totalCustomers = Customer::whereBetween('created_at', [$startDate, $endDate])->count();
+        $activeCustomers = Customer::whereHas('user', fn($q) => $q->where('status', 'active'))
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+    
+        // Growth metrics
+        $previousPeriodCustomers = Customer::whereBetween('created_at', [
+            $startDate->copy()->subDays($startDate->diffInDays($endDate)),
+            $startDate
+        ])->count();
+    
+        $growthRate = $previousPeriodCustomers > 0
+            ? (($totalCustomers - $previousPeriodCustomers) / $previousPeriodCustomers) * 100
+            : 100;
+    
+        // Customer activity
+        $activeRequesters = ServiceRequest::whereBetween('created_at', [$startDate, $endDate])
+            ->distinct('customer_id')
+            ->count('customer_id');
+    
+        // Gender distribution - optimized for pie/donut charts
+        $genderDistribution = Customer::join('users', 'customers.user_id', '=', 'users.id')
+            ->whereBetween('customers.created_at', [$startDate, $endDate])
+            ->select('users.gender', DB::raw('count(*) as count'))
+            ->groupBy('users.gender')
+            ->get();
+    
+        $genderChartData = [
+            'labels' => $genderDistribution->pluck('gender')->map(fn($g) => ucfirst($g))->toArray(),
+            'values' => $genderDistribution->pluck('count')->toArray()
+        ];
+    
+        // Registration trends - optimized for line/bar charts
+        $registrationTrends = Customer::select(
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('count(*) as count')
+            )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+    
+        $registrationTrendsChartData = [
+            'labels' => $registrationTrends->pluck('date')->toArray(),
+            'values' => $registrationTrends->pluck('count')->toArray()
+        ];
+    
+        // Top customers by requests - optimized for bar charts
+        $topCustomers = DB::table('requests')
+            ->select(
+                'requests.customer_id',
+                DB::raw('count(*) as request_count'),
+                'users.first_name',
+                'users.last_name'
+            )
+            ->join('customers', 'requests.customer_id', '=', 'customers.id')
+            ->join('users', 'customers.user_id', '=', 'users.id')
+            ->whereBetween('requests.created_at', [$startDate, $endDate])
+            ->groupBy('requests.customer_id', 'users.first_name', 'users.last_name')
+            ->orderByDesc('request_count')
+            ->limit(10)
+            ->get();
+    
+        $topCustomersChartData = [
+            'labels' => $topCustomers->map(fn($c) => $c->first_name . ' ' . $c->last_name)->toArray(),
+            'values' => $topCustomers->pluck('request_count')->toArray()
+        ];
+    
+        return $this->success([
+            'summary' => [
+                'total_customers' => $totalCustomers,
+                'active_customers' => $activeCustomers,
+                'growth_rate' => round($growthRate, 2),
+                'active_requesters' => $activeRequesters,
+                'percentage_active' => $totalCustomers > 0 ? round(($activeRequesters / $totalCustomers) * 100, 2) : 0,
+            ],
+            'charts' => [
+                'gender_distribution' => $genderChartData,
+                'registration_trends' => $registrationTrendsChartData,
+                'top_customers' => $topCustomersChartData
+            ],
+            'detailed_data' => [
+                'gender_distribution' => $genderDistribution,
+                'registration_trends' => $registrationTrends,
+                'top_customers' => $topCustomers
+            ],
+            'export_url' => route('admin.analytics.customers.export', [
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date
+            ])
+        ], 'Customer analytics retrieved successfully');
+    }
+
+    public function exportCustomerAnalytics(Request $request)
+    {
+        return Excel::download(
+            new CustomersAnalyticsExport($request->start_date, $request->end_date),
+            'customers-analytics-' . $request->start_date . '-to-' . $request->end_date . '.xlsx'
+        );
+    }
+
+
+    public function serviceAnalytics(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        $startDate = Carbon::parse($request->start_date)->startOfDay();
+        $endDate = Carbon::parse($request->end_date)->endOfDay();
+
+        // Basic metrics
+        $totalServices = Service::whereBetween('created_at', [$startDate, $endDate])->count();
+        $activeServices = Service::where('is_active', true)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+
+        // Growth metrics
+        $previousPeriodServices = Service::whereBetween('created_at', [
+            $startDate->copy()->subDays($startDate->diffInDays($endDate)),
+            $startDate
+        ])->count();
+
+        $growthRate = $previousPeriodServices > 0
+            ? (($totalServices - $previousPeriodServices) / $previousPeriodServices) * 100
+            : 100;
+
+        // Service distribution by category - optimized for pie/donut charts
+        $categoryDistribution = Service::with(['category' => function ($query) {
+            $query->select('id', 'name');
+        }])
+            ->select('category_id', DB::raw('count(*) as count'))
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('category_id')
+            ->get()
+            ->map(function ($item) {
+                $categoryName = $item->category ? $item->category->name : ['en' => 'Uncategorized', 'ar' => 'غير مصنف'];
+                return [
+                    'category' => $categoryName,
+                    'count' => $item->count
+                ];
+            });
+
+        // Format category distribution for charts
+        $categoryChartData = [
+            'labels' => $categoryDistribution->pluck('category.en')->toArray(),
+            'values' => $categoryDistribution->pluck('count')->toArray(),
+            'labels_ar' => $categoryDistribution->pluck('category.ar')->toArray()
+        ];
+
+        // Service distribution by provider type - optimized for pie/donut charts
+        $providerTypeDistribution = Service::select(
+            'provider_type',
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('provider_type')
+            ->get();
+
+        $providerTypeChartData = [
+            'labels' => $providerTypeDistribution->pluck('provider_type')->toArray(),
+            'values' => $providerTypeDistribution->pluck('count')->toArray()
+        ];
+
+        // Time-based service creation data - optimized for line/bar charts
+        $creationTrends = Service::select(
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        $creationTrendsChartData = [
+            'labels' => $creationTrends->pluck('date')->toArray(),
+            'values' => $creationTrends->pluck('count')->toArray()
+        ];
+
+        // Helper function to handle multilingual names
+        $getName = function ($name) {
+            if (is_array($name)) {
+                return $name;
+            }
+            if (is_string($name) && json_decode($name)) {
+                return json_decode($name, true);
+            }
+            return [
+                'en' => $name,
+                'ar' => $name
+            ];
+        };
+
+        // Top services by requests - optimized for bar charts
+        $topServicesByRequests = DB::table('request_services')
+            ->select(
+                'services.id',
+                'services.name',
+                DB::raw('count(request_services.id) as request_count'),
+                DB::raw('sum(request_services.price) as total_revenue')
+            )
+            ->join('services', 'request_services.service_id', '=', 'services.id')
+            ->join('requests', 'request_services.request_id', '=', 'requests.id')
+            ->whereBetween('requests.created_at', [$startDate, $endDate])
+            ->groupBy('services.id', 'services.name')
+            ->orderByDesc('request_count')
+            ->limit(10)
+            ->get()
+            ->map(function ($service) use ($getName) {
+                $name = $getName($service->name);
+                return [
+                    'id' => $service->id,
+                    'name' => $name,
+                    'request_count' => $service->request_count,
+                    'total_revenue' => $service->total_revenue
+                ];
+            });
+
+        $topServicesRequestsChartData = [
+            'labels' => $topServicesByRequests->pluck('name.en')->toArray(),
+            'values' => $topServicesByRequests->pluck('request_count')->toArray(),
+            'labels_ar' => $topServicesByRequests->pluck('name.ar')->toArray()
+        ];
+
+        // Top services by revenue - optimized for bar charts
+        $topServicesByRevenue = DB::table('request_services')
+            ->select(
+                'services.id',
+                'services.name',
+                DB::raw('count(request_services.id) as request_count'),
+                DB::raw('sum(request_services.price) as total_revenue')
+            )
+            ->join('services', 'request_services.service_id', '=', 'services.id')
+            ->join('requests', 'request_services.request_id', '=', 'requests.id')
+            ->whereBetween('requests.created_at', [$startDate, $endDate])
+            ->groupBy('services.id', 'services.name')
+            ->orderByDesc('total_revenue')
+            ->limit(10)
+            ->get()
+            ->map(function ($service) use ($getName) {
+                $name = $getName($service->name);
+                return [
+                    'id' => $service->id,
+                    'name' => $name,
+                    'request_count' => $service->request_count,
+                    'total_revenue' => $service->total_revenue
+                ];
+            });
+
+        $topServicesRevenueChartData = [
+            'labels' => $topServicesByRevenue->pluck('name.en')->toArray(),
+            'values' => $topServicesByRevenue->pluck('total_revenue')->toArray(),
+            'labels_ar' => $topServicesByRevenue->pluck('name.ar')->toArray()
+        ];
+
+        return $this->success([
+            'summary' => [
+                'total_services' => $totalServices,
+                'active_services' => $activeServices,
+                'inactive_services' => $totalServices - $activeServices,
+                'growth_rate' => round($growthRate, 2),
+            ],
+            'charts' => [
+                'category_distribution' => $categoryChartData,
+                'provider_type_distribution' => $providerTypeChartData,
+                'creation_trends' => $creationTrendsChartData,
+                'top_services_by_requests' => $topServicesRequestsChartData,
+                'top_services_by_revenue' => $topServicesRevenueChartData
+            ],
+            'detailed_data' => [
+                'category_distribution' => $categoryDistribution,
+                'provider_type_distribution' => $providerTypeDistribution,
+                'creation_trends' => $creationTrends,
+                'top_services_by_requests' => $topServicesByRequests,
+                'top_services_by_revenue' => $topServicesByRevenue
+            ],
+            'export_url' => route('admin.analytics.services.export', [
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date
+            ])
+        ], 'Service analytics retrieved successfully');
+    }
+
+    public function exportServiceAnalytics(Request $request)
+    {
+        return Excel::download(
+            new ServicesAnalyticsExport($request->start_date, $request->end_date),
+            'services-analytics-' . $request->start_date . '-to-' . $request->end_date . '.xlsx'
+        );
+    }
+
+}

@@ -320,7 +320,7 @@ class RequestController extends Controller
             try {
                 $serviceRequest->services()->attach($newService->id, ['price' => $newService->price]);
     
-                $newTotalPrice = $serviceRequest->services->sum('pivot.price');
+                $newTotalPrice = $serviceRequest->services->sum('pivot.price') + $newService->price;
                 $serviceRequest->total_price = $newTotalPrice;
                 $serviceRequest->save();
     

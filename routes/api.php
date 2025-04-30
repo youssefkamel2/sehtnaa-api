@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ProviderController;
+use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ResetPasswordController;
@@ -34,11 +35,11 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::post('/document-status', [ProviderController::class, 'documentStatus']);
     Route::post('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
     Route::post('/accept/{requestId}', [ProviderController::class, 'acceptRequest'])->middleware(['auth:api']);
-
 });
 
 Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->group(function () {
-    Route::get('/', [AdminController::class,'index']);
+
+    Route::get('/', [AdminController::class, 'index']);
     Route::post('/create-admin', [AdminController::class, 'createAdmin']);
     Route::post('/update-admin', [AdminController::class, 'updateAdmin']);
     Route::post('/delete-admin', [AdminController::class, 'deleteAdmin']);
@@ -47,7 +48,7 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
         Route::get('/', [ComplaintController::class, 'index']);
         Route::get('/{id}', [ComplaintController::class, 'show']);
         Route::put('/{id}/status', [ComplaintController::class, 'updateStatus']);
-    }); 
+    });
     // dashboard
     Route::get('/dashboard', [DashboardController::class, 'dashboard']);
     // customers
@@ -55,10 +56,12 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
         Route::get('/', [CustomerController::class, 'getAllCustomers']);
         Route::post('/{id}/toggle-status', [CustomerController::class, 'toggleCustomerStatus']);
     });
+
     // requests
     Route::prefix('requests')->group(function () {
         Route::get('/', [RequestController::class, 'getAllRequests']);
     });
+
     // notifications
     Route::prefix('notifications')->group(function () {
         Route::get('campaigns', [UserController::class, 'getCampaigns']);
@@ -79,6 +82,34 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
         Route::delete('/required-documents/{id}', [ProviderController::class, 'deleteRequiredDocument']);
     });
 
+    // analytics
+
+    Route::prefix('analytics')->group(function () {
+        // Customers
+    Route::get('/customers', [AnalyticsController::class, 'customerAnalytics']);
+    Route::get('/customers/export', [AnalyticsController::class, 'exportCustomerAnalytics'])->name('admin.analytics.customers.export');
+    
+    // Services
+    Route::get('/services', [AnalyticsController::class, 'serviceAnalytics']);
+    Route::get('/services/export', [AnalyticsController::class, 'exportServiceAnalytics'])->name('admin.analytics.services.export');
+    
+    // Categories
+    Route::get('/categories', [AnalyticsController::class, 'categoryAnalytics']);
+    Route::get('/categories/export', [AnalyticsController::class, 'exportCategoryAnalytics']);
+    
+    // Providers
+    Route::get('/providers', [AnalyticsController::class, 'providerAnalytics']);
+    Route::get('/providers/export', [AnalyticsController::class, 'exportProviderAnalytics']);
+    
+    // Complaints
+    Route::get('/complaints', [AnalyticsController::class, 'complaintAnalytics']);
+    Route::get('/complaints/export', [AnalyticsController::class, 'exportComplaintAnalytics']);
+    
+    // Requests
+    Route::get('/requests', [AnalyticsController::class, 'requestAnalytics']);
+    Route::get('/requests/export', [AnalyticsController::class, 'exportRequestAnalytics']);
+    
+    });
 });
 
 Route::prefix('user')->middleware(['auth:api'])->group(function () {
@@ -89,7 +120,7 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
     Route::post('/update-language', [UserController::class, 'updateLanguage']);
     Route::post('/update-profile-image', [UserController::class, 'updateProfileImage']);
     Route::post('/update-password', [UserController::class, 'changePassword']);
-    Route::get('/ongoing-requests', [CustomerController::class,'getOngoingRequests']);
+    Route::get('/ongoing-requests', [CustomerController::class, 'getOngoingRequests']);
 });
 
 

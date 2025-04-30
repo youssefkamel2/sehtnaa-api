@@ -48,4 +48,11 @@ class Service extends Model
     {
         return $query->where('provider_type', $type);
     }
+
+    public function requests()
+    {
+        return $this->belongsToMany(Request::class, 'request_services')
+            ->withPivot('price')
+            ->withTimestamps();
+    }
 }
