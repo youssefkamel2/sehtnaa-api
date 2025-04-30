@@ -27,13 +27,14 @@ class ProviderNotifier
         try {
             DB::beginTransaction();
 
-            $service = Service::find($serviceRequest->service_id);
-            if (!$service) {
+            // Get the first service to determine provider type (since all services in request share same category)
+            $primaryService = $serviceRequest->services->first();
+            if (!$primaryService) {
                 $this->logServiceNotFound($logData);
                 return 0;
             }
 
-            $providers = $this->getEligibleProviders($serviceRequest, $service, $logData);
+            $providers = $this->getEligibleProviders($serviceRequest, $primaryService, $logData);
             $nearbyProviders = $this->findNearbyProviders($providers, $serviceRequest, $radius, $logData);
 
             if (count($nearbyProviders) === 0) {
@@ -59,7 +60,7 @@ class ProviderNotifier
     {
         return [
             'request_id' => $request->id,
-            'service_id' => $request->service_id,
+            'service_ids' => $request->services->pluck('id')->toArray(),
             'customer_id' => $request->customer_id,
             'search_radius' => $radius,
             'timestamp' => now()->toDateTimeString(),
@@ -73,11 +74,11 @@ class ProviderNotifier
         ];
     }
 
-    protected function getEligibleProviders(ServiceRequest $request, $service, &$logData)
+    protected function getEligibleProviders(ServiceRequest $request, $primaryService, &$logData)
     {
         $providers = Provider::with(['user'])
             ->where('is_available', true)
-            ->where('provider_type', $service->provider_type)
+            ->where('provider_type', $primaryService->provider_type)
             ->whereNotIn('id', function($query) use ($request) {
                 $query->select('provider_id')
                     ->from('request_providers')
@@ -86,8 +87,8 @@ class ProviderNotifier
             ->get();
 
         $logData['total_available_providers'] = $providers->count();
-        $logData['service_type'] = $service->name ?? 'Unknown';
-        $logData['required_provider_type'] = $service->provider_type;
+        $logData['service_names'] = $request->services->pluck('name')->toArray();
+        $logData['required_provider_type'] = $primaryService->provider_type;
         $logData['execution_stage'] = 'providers_queried';
 
         return $providers;
@@ -159,14 +160,12 @@ class ProviderNotifier
             $distance = $nearby['distance'];
             $providerLog = $nearby['log_entry'];
             
-            // Initialize processing flags
             $providerLog['processing_started'] = true;
             $providerLog['database_recorded'] = false;
             $providerLog['notification_attempted'] = false;
             $providerLog['firestore_attempted'] = false;
 
             try {
-                // Record in database first
                 RequestProvider::create([
                     'request_id' => $request->id,
                     'provider_id' => $provider->id,
@@ -177,7 +176,6 @@ class ProviderNotifier
                 $results['notified_count']++;
                 $logData['providers_notified']++;
 
-                // Send notification
                 $providerLog['notification_attempted'] = true;
                 $notificationResult = $this->sendProviderNotification($provider, $request, $distance, $radius, $providerLog);
                 if ($notificationResult) {
@@ -188,7 +186,6 @@ class ProviderNotifier
                     $providerLog['notification_sent'] = false;
                 }
 
-                // Update Firestore
                 $providerLog['firestore_attempted'] = true;
                 $firestoreResult = $this->updateFirestore($provider, $request, $distance, $radius, $providerLog);
                 if ($firestoreResult) {
@@ -203,7 +200,6 @@ class ProviderNotifier
                 $providerLog['error'] = 'Processing failed: ' . $e->getMessage();
                 $logData['errors'][] = $providerLog['error'];
                 
-                // Update result counts based on what failed
                 if ($providerLog['notification_attempted'] && !$providerLog['notification_sent']) {
                     $results['notification_failed']++;
                 }
@@ -212,7 +208,6 @@ class ProviderNotifier
                 }
             }
 
-            // Update the log entry in the main log data
             foreach ($logData['provider_details'] as &$existingLog) {
                 if ($existingLog['provider_id'] == $providerLog['provider_id']) {
                     $existingLog = array_merge($existingLog, $providerLog);
@@ -229,7 +224,7 @@ class ProviderNotifier
     {
         return [
             'provider_id' => $provider->id,
-            'provider_name' => $provider->user->name ?? 'Provider #' . $provider->id,
+            'provider_name' => $provider->user->first_name ?? 'Provider #' . $provider->id,
             'has_location' => false,
             'distance' => null,
             'within_range' => false,
@@ -243,8 +238,8 @@ class ProviderNotifier
         ];
     }
 
-    protected function hasValidLocation($provider, &$providerLog){
-
+    protected function hasValidLocation($provider, &$providerLog)
+    {
         if (!$provider->user->latitude || !$provider->user->longitude) {
             $providerLog['location_status'] = 'Missing coordinates';
             return false;
@@ -263,19 +258,22 @@ class ProviderNotifier
         }
 
         try {
+            $serviceNames = $request->services->pluck('name')->implode(', ');
+            
             $response = $this->firebaseService->sendToDevice(
                 $provider->user->fcm_token,
                 'New Service Request',
-                'You have a new service request nearby',
+                'You have a new service request nearby for: ' . $serviceNames,
                 [
                     'type' => 'new_request',
                     'request_id' => $request->id,
                     'distance' => $distance,
-                    'search_radius' => $radius
+                    'search_radius' => $radius,
+                    'total_price' => $request->total_price,
+                    'service_count' => $request->services->count()
                 ]
             );
 
-            // Check for errors in the Firebase response
             if (isset($response['failure']) && $response['failure'] > 0) {
                 $error = $response['results'][0]['error'] ?? 'Unknown FCM error';
                 $providerLog['notification_error'] = 'FCM Delivery Error: ' . $error;
@@ -294,10 +292,14 @@ class ProviderNotifier
     protected function updateFirestore($provider, $request, $distance, $radius, &$providerLog)
     {
         try {
+            $serviceNames = $request->services->pluck('name')->implode(', ');
+            
             $data = [
                 'request_id' => (string) $request->id,
-                'customer_name' => $request->customer->user->name ?? 'Unknown Customer',
-                'service_name' => $this->getServiceName($request->service),
+                'customer_name' => $request->name ?? 'Unknown Customer',
+                'service_names' => $serviceNames,
+                'services_count' => $request->services->count(),
+                'total_price' => $request->total_price,
                 'gender' => $request->gender ?? 'unknown',
                 'distance' => round($distance, 2) . ' km',
                 'search_radius' => $radius . ' km',
@@ -322,14 +324,6 @@ class ProviderNotifier
             $providerLog['firestore_error'] = 'Firestore Error: ' . $e->getMessage();
             return false;
         }
-    }
-
-    protected function getServiceName($service)
-    {
-        if (is_array($service->name)) {
-            return $service->name['en'] ?? 'Unknown Service';
-        }
-        return (string) $service->name;
     }
 
     protected function logServiceNotFound(&$logData)

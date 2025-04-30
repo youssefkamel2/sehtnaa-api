@@ -14,6 +14,8 @@ return new class extends Migration
             $table->json('description')->nullable();
             $table->string('icon')->nullable();
             $table->boolean('is_active')->default(true);
+            // column to check if this category support multiple services
+            $table->boolean('is_multiple')->default(false);
             $table->integer('order')->default(0);
             $table->foreignId('added_by')->constrained('users')->onDelete('cascade');
             $table->timestamps();

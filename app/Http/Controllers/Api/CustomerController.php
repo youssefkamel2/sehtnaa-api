@@ -15,9 +15,9 @@ class CustomerController extends Controller
     public function getAllCustomers()
     {
         try {
-            $customers = Customer::with(['user' => function($query) {
-                    $query->select('id', 'first_name', 'last_name', 'email', 'phone', 'gender', 'status', 'profile_image');
-                }])
+            $customers = Customer::with(['user' => function ($query) {
+                $query->select('id', 'first_name', 'last_name', 'email', 'phone', 'gender', 'status', 'profile_image');
+            }])
                 ->select('id', 'user_id', 'created_at')
                 ->orderBy('created_at', 'desc')
                 ->get()
@@ -46,7 +46,7 @@ class CustomerController extends Controller
     {
         try {
             $customer = Customer::with('user')->findOrFail($id);
-            
+
             if (!$customer->user) {
                 return $this->error('Customer user not found', 404);
             }
@@ -58,7 +58,6 @@ class CustomerController extends Controller
             return $this->success([
                 'status' => $customer->user->status
             ], 'Customer status updated successfully');
-
         } catch (\Exception $e) {
             return $this->error('Failed to update customer status: ' . $e->getMessage(), 500);
         }
@@ -69,20 +68,20 @@ class CustomerController extends Controller
     {
         try {
             $user = Auth::user();
-    
+
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can view requests', 403);
             }
-    
+
             if (!$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-    
+
             $requests = ServiceRequest::with([
-                    'service:id,name',
-                    'requirements.serviceRequirement:id,name,type',
-                    'assignedProvider.user:id,first_name,last_name,profile_image'
-                ])
+                'services:id,name',
+                'requirements.serviceRequirement:id,name,type',
+                'assignedProvider.user:id,first_name,last_name,profile_image'
+            ])
                 ->where('customer_id', $user->customer->id)
                 ->whereIn('status', ['pending', 'accepted'])
                 ->orderBy('created_at', 'desc')
@@ -90,10 +89,14 @@ class CustomerController extends Controller
                 ->map(function ($request) {
                     return [
                         'id' => $request->id,
-                        'service' => [
-                            'id' => $request->service_id,
-                            'name' => $request->service->name ?? 'Unknown Service'
-                        ],
+                        'services' => $request->services->map(function ($service) {
+                            return [
+                                'id' => $service->id,
+                                'name' => $service->name,
+                                'price' => $service->pivot->price
+                            ];
+                        }),
+                        'total_price' => $request->total_price,
                         'status' => $request->status,
                         'created_at' => $request->created_at->format('Y-m-d H:i:s'),
                         'updated_at' => $request->updated_at->format('Y-m-d H:i:s'),
@@ -114,15 +117,20 @@ class CustomerController extends Controller
                             'id' => $request->assignedProvider->id,
                             'name' => $request->assignedProvider->user->first_name . ' ' . $request->assignedProvider->user->last_name,
                             'image' => $request->assignedProvider->user->profile_image ? $request->assignedProvider->user->profile_image : null
-                        ] : null
+                        ] : null,
+                        'customer_info' => [
+                            'name' => $request->name,
+                            'age' => $request->age,
+                            'gender' => $request->gender,
+                            'phone' => $request->phone,
+                            'additional_info' => $request->additional_info
+                        ]
                     ];
                 });
-    
+
             return $this->success($requests, 'Ongoing requests retrieved successfully');
-    
         } catch (\Exception $e) {
             return $this->error('Failed to retrieve ongoing requests: ' . $e->getMessage(), 500);
         }
     }
-
 }

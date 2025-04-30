@@ -22,7 +22,7 @@ class DatabaseSeeder extends Seeder
             UsersTableSeeder::class,
             CategoriesTableSeeder::class,
             ServicesTableSeeder::class,
-            RequestsTableSeeder::class,
+            // RequestsTableSeeder::class,
         ]);
     }
 }

@@ -6,29 +6,34 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Request extends Model
 {
     protected $fillable = [
-        'customer_id', 'service_id', 'phone', 'address', 'latitude', 'longitude',
+        'customer_id', 'phone', 'address', 'latitude', 'longitude',
         'additional_info', 'status', 'assigned_provider_id', 'scheduled_at',
-        'started_at', 'completed_at', 'gender', 'current_search_radius', 'expansion_attempts', 'last_expansion_at'
+        'started_at', 'completed_at', 'gender', 'current_search_radius', 
+        'expansion_attempts', 'last_expansion_at', 'total_price', 'address', 'age'
     ];
 
     protected $casts = [
         'scheduled_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'total_price' => 'decimal:2',
     ];
 
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->with('user');
     }
-
-    public function service(): BelongsTo
+    
+    public function services(): BelongsToMany
     {
-        return $this->belongsTo(Service::class)->with('category');
+        return $this->belongsToMany(Service::class, 'request_services')
+                    ->withPivot('price')
+                    ->withTimestamps();
     }
 
     public function assignedProvider(): BelongsTo
@@ -50,12 +55,11 @@ class Request extends Model
     {
         return $this->hasMany(Complaint::class);
     }
+
     public function isCancellable(): bool
     {
-        // Get raw status value bypassing the accessor
         $status = strtolower($this->getRawOriginal('status'));
         
-        // Request can be cancelled if it's pending or within 15 minutes of acceptance
         if ($status === 'pending') {
             return true;
         }
@@ -84,12 +88,10 @@ class Request extends Model
         return $this->hasManyThrough(
             ServiceRequirement::class,
             Service::class,
-            'id', // Foreign key on services table
-            'service_id', // Foreign key on service_requirements table
-            'service_id', // Local key on requests table
-            'id' // Local key on services table
-        );
+            'id',
+            'service_id',
+            'id',
+            'id'
+        )->via('services');
     }
-
-
 }

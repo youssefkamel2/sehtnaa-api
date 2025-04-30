@@ -14,6 +14,7 @@ class Category extends Model
         'description',
         'icon',
         'is_active',
+        'is_multiple',
         'order',
         'added_by'
     ];

@@ -38,24 +38,82 @@ class RequestController extends Controller
         $this->providerNotifier = $providerNotifier;
     }
 
-
     public function createRequest(Request $request)
     {
         try {
             $user = Auth::user();
-    
+
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can create requests', 403);
             }
-    
+
             if (!$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-    
-            // Get all requirements for this service
-            $serviceRequirements = ServiceRequirement::where('service_id', $request->service_id)->get();
-    
-            // Decode JSON requirements if they come as string
+
+            // Validate input
+            $validator = Validator::make($request->all(), [
+                'service_ids' => 'required|array|min:1',
+                'service_ids.*' => 'exists:services,id',
+                'latitude' => 'required|numeric',
+                'longitude' => 'required|numeric',
+                'phone' => 'required|string',
+                'gender' => 'required|in:male,female',
+                'additional_info' => 'nullable|string',
+                'age' => 'required|integer|min:1',
+                'address' => 'nullable|string',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 422);
+            }
+
+            $serviceIds = $request->service_ids;
+            $services = Service::with('category')->whereIn('id', $serviceIds)->get();
+
+            // Check if all services exist
+            if ($services->count() !== count($serviceIds)) {
+                return $this->error('One or more services not found', 404);
+            }
+
+            // Check if all services belong to the same category
+            $categoryIds = $services->pluck('category_id')->unique();
+            if ($categoryIds->count() > 1) {
+                return $this->error('All services must belong to the same category', 422);
+            }
+
+            $category = $services->first()->category;
+
+            // Check if multiple services are allowed for this category
+            if (!$category->is_multiple && count($serviceIds) > 1) {
+                return $this->error('This category does not support multiple services', 422);
+            }
+
+            // Check maximum ongoing requests (3)
+            $ongoingRequestsCount = ServiceRequest::where('customer_id', $user->customer->id)
+                ->whereIn('status', ['pending', 'accepted'])
+                ->count();
+
+            if ($ongoingRequestsCount >= 3) {
+                return $this->error('You cannot have more than 3 ongoing requests', 400);
+            }
+
+            // Check if customer already has a request in this category
+            $existingCategoryRequest = ServiceRequest::where('customer_id', $user->customer->id)
+                ->whereIn('status', ['pending', 'accepted'])
+                ->whereHas('services', function ($query) use ($category) {
+                    $query->where('category_id', $category->id);
+                })
+                ->exists();
+
+            if ($existingCategoryRequest) {
+                return $this->error('You already have an ongoing request in this category', 400);
+            }
+
+            // Get requirements for all services
+            $serviceRequirements = ServiceRequirement::whereIn('service_id', $serviceIds)->get();
+
+            // Handle requirements if they are sent as JSON string
             $requirements = $request->requirements;
             if (is_string($requirements)) {
                 try {
@@ -65,44 +123,33 @@ class RequestController extends Controller
                     return $this->error('Invalid requirements format', 422);
                 }
             }
-    
-            // Prepare validation rules
-            $validatorRules = [
-                'service_id' => 'required|exists:services,id',
-                'latitude' => 'required|numeric',
-                'longitude' => 'required|numeric',
-                'phone' => 'required|string',
-                'gender' => 'required|in:male,female',
-                'additional_info' => 'nullable|string',
-                'name' => 'required|string',
-                'age' => 'required|string',
-            ];
-    
-            // Only add requirements validation if there are service requirements
+
+            // Prepare validation rules for requirements
+            $requirementRules = [];
             if ($serviceRequirements->count() > 0) {
-                $validatorRules['requirements'] = 'required|array|size:' . $serviceRequirements->count();
+                $requirementRules['requirements'] = 'required|array';
             }
-    
+
             // Custom validation for each requirement
-            $validator = Validator::make($request->all(), $validatorRules, [
-                'requirements.size' => 'All service requirements must be provided'
+            $validator = Validator::make($request->all(), $requirementRules, [
+                'requirements.required' => 'All service requirements must be provided'
             ]);
-    
-            // Only validate individual requirements if there are service requirements
+
+            // Validate individual requirements
             if ($serviceRequirements->count() > 0) {
                 foreach ($request->requirements as $index => $requirement) {
                     if (!is_array($requirement)) {
                         $validator->errors()->add("requirements.$index", 'Invalid requirement format');
                         continue;
                     }
-    
+
                     $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
-    
+
                     if (!$serviceRequirement) {
                         $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
                         continue;
                     }
-    
+
                     if ($serviceRequirement->type === 'file') {
                         $fileKey = 'file_' . $requirement['requirement_id'];
                         if (!$request->hasFile($fileKey)) {
@@ -115,36 +162,48 @@ class RequestController extends Controller
                     }
                 }
             }
-    
+
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-    
+
             DB::beginTransaction();
-    
+
             try {
+                // Calculate total price
+                $totalPrice = $services->sum('price');
+
+                // Create the main request record
                 $serviceRequest = ServiceRequest::create([
                     'customer_id' => $user->customer->id,
-                    'service_id' => $request->service_id,
                     'phone' => $request->phone,
                     'latitude' => $request->latitude,
                     'longitude' => $request->longitude,
                     'additional_info' => $request->additional_info,
                     'gender' => $request->gender,
-                    'name' => $request->name,
                     'age' => $request->age,
                     'status' => 'pending',
                     'current_search_radius' => 1,
-                    'expansion_attempts' => 0
+                    'expansion_attempts' => 0,
+                    'total_price' => $totalPrice,
+                    'name' => $request->name ?? $user->customer->user->name
                 ]);
-    
+
+                // Attach all services to the request with their individual prices
+                $serviceRequest->services()->attach(
+                    $services->mapWithKeys(function ($service) {
+                        return [$service->id => ['price' => $service->price]];
+                    })
+                );
+
+                // Handle requirements
                 if ($serviceRequirements->count() > 0) {
                     foreach ($request->requirements as $requirementData) {
                         $serviceRequirement = ServiceRequirement::find($requirementData['requirement_id']);
-    
+
                         $filePath = null;
                         $value = null;
-    
+
                         if ($serviceRequirement->type === 'file') {
                             $fileKey = 'file_' . $requirementData['requirement_id'];
                             if ($request->hasFile($fileKey)) {
@@ -153,7 +212,7 @@ class RequestController extends Controller
                         } else {
                             $value = $requirementData['value'];
                         }
-    
+
                         RequestRequirement::create([
                             'request_id' => $serviceRequest->id,
                             'service_requirement_id' => $requirementData['requirement_id'],
@@ -162,18 +221,18 @@ class RequestController extends Controller
                         ]);
                     }
                 }
-    
+
                 // Provider notification logic
                 $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 1);
-    
+
                 if ($notifiedCount === 0) {
                     $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 3);
                     $serviceRequest->update(['current_search_radius' => 3]);
-    
+
                     if ($notifiedCount === 0) {
                         $notifiedCount = $this->providerNotifier->findAndNotifyProviders($serviceRequest, 5);
                         $serviceRequest->update(['current_search_radius' => 5]);
-    
+
                         if ($notifiedCount === 0) {
                             DB::rollBack();
                             return $this->error('No available providers found for this service in your area', 400);
@@ -188,11 +247,11 @@ class RequestController extends Controller
                         ->delay(now()->addSeconds(10))
                         ->onQueue('request_expansion');
                 }
-    
+
                 DB::commit();
-    
+
                 return $this->success([
-                    'request' => $serviceRequest,
+                    'request' => $serviceRequest->load('services'),
                     'message' => 'Request created successfully'
                 ]);
             } catch (\Exception $e) {
@@ -206,7 +265,114 @@ class RequestController extends Controller
         }
     }
 
+    // function to add service to the current request 
+    public function addServiceToRequest(Request $request, $id)
+    {
+        try {
+            $user = Auth::user();
+    
+            if ($user->user_type !== 'customer') {
+                return $this->error('Only customers can modify requests', 403);
+            }
+    
+            if (!$user->customer) {
+                return $this->error('Customer profile not found', 404);
+            }
+    
+            $validator = Validator::make($request->all(), [
+                'service_id' => 'required|exists:services,id',
+            ]);
+    
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 422);
+            }
+    
+            $serviceRequest = ServiceRequest::with(['services.category'])
+                ->where('customer_id', $user->customer->id)
+                ->whereIn('status', ['pending', 'accepted'])
+                ->find($id);
+    
+            if (!$serviceRequest) {
+                return $this->error('Request not found or not modifiable', 404);
+            }
+    
+            $newService = Service::with('category')->find($request->service_id);
+            if (!$newService) {
+                return $this->error('Service not found', 404);
+            }
+    
+            if ($serviceRequest->services->contains($newService->id)) {
+                return $this->error('Service already exists in this request', 400);
+            }
+    
+            $existingCategory = $serviceRequest->services->first()->category;
+            
+            if ($newService->category_id !== $existingCategory->id) {
+                return $this->error('Service must belong to the same category as existing services', 400);
+            }
+    
+            if (!$existingCategory->is_multiple && $serviceRequest->services->count() >= 1) {
+                return $this->error('This category does not support multiple services', 400);
+            }
+    
+            DB::beginTransaction();
+    
+            try {
+                $serviceRequest->services()->attach($newService->id, ['price' => $newService->price]);
+    
+                $newTotalPrice = $serviceRequest->services->sum('pivot.price');
+                $serviceRequest->total_price = $newTotalPrice;
+                $serviceRequest->save();
+    
+                if ($serviceRequest->status === 'accepted' && $serviceRequest->assigned_provider_id) {
+                    $this->notifyProviderAboutServiceAddition($serviceRequest, $newService);
+                }
 
+                DB::commit();
+    
+                return $this->success([
+                    'request' => $serviceRequest->fresh()->load('services')
+                ], 'Service added successfully');
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Failed to add service to request: ' . $e->getMessage());
+                return $this->error('Failed to add service to request: ' . $e->getMessage(), 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('Request processing failed: ' . $e->getMessage());
+            return $this->error('Failed to process request: ' . $e->getMessage(), 500);
+        }
+    }
+    
+    protected function notifyProviderAboutServiceAddition($serviceRequest, $newService)
+    {
+        $provider = $serviceRequest->assignedProvider;
+        if (!$provider || !$provider->user->fcm_token) {
+            Log::channel('fcm_errors')->error('Provider or FCM token not found', [
+                'provider_id' => $provider ? $provider->id : null,
+                'request_id' => $serviceRequest->id,
+            ]);
+            return;
+        }
+    
+        try {
+            $this->firebaseService->sendToDevice(
+                $provider->user->fcm_token,
+                'Service Added to Request',
+                'A new service has been added to your assigned request: ' . $newService->name,
+                [
+                    'type' => 'service_added',
+                    'request_id' => $serviceRequest->id,
+                    'service_id' => $newService->id,
+                    'service_name' => $newService->name,
+                    'new_total_price' => $serviceRequest->total_price
+                ]
+            );
+    
+        } catch (\Exception $e) {
+            Log::error('Failed to notify provider about service addition: ' . $e->getMessage());
+        }
+    }
 
     // get all requests (for admin)
     public function getAllRequests()
@@ -219,7 +385,7 @@ class RequestController extends Controller
             }
 
             $requests = ServiceRequest::with([
-                'service:id,name,price',
+                'services:id,name,price',
                 'customer.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
@@ -229,16 +395,42 @@ class RequestController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($request) {
-                    $formatted = $this->formatRequest($request);
-                    $formatted['customer'] = [
-                        'first_name' => $request->customer->user->first_name,
-                        'last_name' => $request->customer->user->last_name,
-                        'phone' => $request->customer->user->phone,
-                        'profile_image' => $request->customer->user->profile_image
+                    $formatted = [
+                        'id' => $request->id,
+                        'customer_id' => $request->customer_id,
+                        'services' => $request->services->map(function ($service) {
+                            return [
+                                'id' => $service->id,
+                                'name' => $service->name,
+                                'price' => $service->pivot->price
+                            ];
+                        }),
+                        'total_price' => $request->total_price,
+                        'phone' => $request->phone,
+                        'status' => $request->status,
+                        'created_at' => $request->created_at,
+                        'customer' => [
+                            'first_name' => $request->customer->user->first_name,
+                            'last_name' => $request->customer->user->last_name,
+                            'phone' => $request->customer->user->phone,
+                            'profile_image' => $request->customer->user->profile_image
+                        ],
+                        'assigned_provider' => $request->assignedProvider ? [
+                            'id' => $request->assignedProvider->id,
+                            'first_name' => $request->assignedProvider->user->first_name,
+                            'last_name' => $request->assignedProvider->user->last_name,
+                            'provider_type' => $request->assignedProvider->provider_type,
+                            'phone' => $request->assignedProvider->user->phone,
+                            'profile_image' => $request->assignedProvider->user->profile_image
+                        ] : null,
+                        'feedbacks' => $request->feedbacks,
+                        'complaints_count' => $request->complaints->count(),
+                        'additional_info' => $request->additional_info,
+                        'location' => [
+                            'latitude' => $request->latitude,
+                            'longitude' => $request->longitude
+                        ]
                     ];
-                    $formatted['feedbacks'] = $request->feedbacks;
-                    $formatted['complaints_count'] = $request->complaints->count();
-                    $formatted['created_at'] = $request->created_at;
                     return $formatted;
                 });
 
@@ -247,6 +439,7 @@ class RequestController extends Controller
             return $this->error('Failed to fetch requests: ' . $e->getMessage(), 500);
         }
     }
+
     public function getUserRequests()
     {
         try {
@@ -611,14 +804,17 @@ class RequestController extends Controller
         return [
             'id' => $request->id,
             'customer_id' => $request->customer_id,
-            'service_id' => $request->service_id,
+            'services' => $request->services->map(function ($service) {
+                return [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'price' => $service->pivot->price
+                ];
+            }),
+            'total_price' => $request->total_price,
             'phone' => $request->phone,
             'address' => $request->address,
             'status' => $request->status,
-            'service' => [
-                'name' => $request->service->name,
-                'price' => $request->service->price
-            ],
             'assigned_provider' => $request->assignedProvider ? [
                 'first_name' => $request->assignedProvider->user->first_name,
                 'last_name' => $request->assignedProvider->user->last_name,
@@ -636,6 +832,9 @@ class RequestController extends Controller
         $formatted['additional_info'] = $request->additional_info;
         $formatted['latitude'] = $request->latitude;
         $formatted['longitude'] = $request->longitude;
+        $formatted['gender'] = $request->gender;
+        $formatted['name'] = $request->name;
+        $formatted['age'] = $request->age;
         $formatted['scheduled_at'] = $request->scheduled_at;
         $formatted['started_at'] = $request->started_at;
         $formatted['completed_at'] = $request->completed_at;

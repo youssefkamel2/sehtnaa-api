@@ -42,6 +42,7 @@ class CategoryController extends Controller
             'description.ar' => 'sometimes|string',
             'icon' => 'required|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
             'order' => 'sometimes|integer|min:0',
+            'is_multiple' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -50,7 +51,6 @@ class CategoryController extends Controller
 
         try {
             $iconPath = $request->file('icon')->store('category_icons', 'public');;
-            // $iconUrl = Storage::url($iconPath);
 
             $category = Category::create([
                 'name' => [
@@ -64,7 +64,8 @@ class CategoryController extends Controller
                 'icon' => $iconPath,
                 'order' => $request->order ?? 0,
                 'added_by' => auth()->id(),
-                'is_active' => true
+                'is_active' => true,
+                'is_multiple' => $request->is_multiple ?? false,
             ]);
 
             return $this->success($category, 'Category created successfully', 201);
@@ -100,6 +101,7 @@ class CategoryController extends Controller
             'icon' => 'sometimes|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
             'order' => 'sometimes|integer|min:0',
             'is_active' => 'sometimes|boolean',
+            'is_multiple' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -146,6 +148,10 @@ class CategoryController extends Controller
 
             if ($request->has('is_active')) {
                 $updateData['is_active'] = $request->is_active;
+            }
+
+            if ($request->has('is_multiple')) {
+                $updateData['is_multiple'] = $request->is_multiple;
             }
 
             $category->update($updateData);
