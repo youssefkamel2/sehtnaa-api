@@ -22,9 +22,9 @@ class DashboardController extends Controller
             $data = [
                 'users' => [
                     'count' => Customer::count(),
-                    'recent' => Customer::with(['user' => function($query) {
-                            $query->select('id', 'first_name', 'last_name', 'gender', 'phone', 'email', 'status');
-                        }])
+                    'recent' => Customer::with(['user' => function ($query) {
+                        $query->select('id', 'first_name', 'last_name', 'gender', 'phone', 'email', 'status');
+                    }])
                         ->select('id', 'user_id')
                         ->latest()
                         ->take(5)
@@ -42,9 +42,9 @@ class DashboardController extends Controller
                 ],
                 'providers' => [
                     'count' => Provider::count(),
-                    'recent' => Provider::with(['user' => function($query) {
-                            $query->select('id', 'first_name', 'last_name');
-                        }])
+                    'recent' => Provider::with(['user' => function ($query) {
+                        $query->select('id', 'first_name', 'last_name');
+                    }])
                         ->select('id', 'user_id', 'provider_type')
                         ->latest()
                         ->take(5)
@@ -59,9 +59,9 @@ class DashboardController extends Controller
                 ],
                 'services' => [
                     'count' => Service::count(),
-                    'recent' => Service::with(['category' => function($query) {
-                            $query->select('id', 'name', 'icon');
-                        }])
+                    'recent' => Service::with(['category' => function ($query) {
+                        $query->select('id', 'name', 'icon');
+                    }])
                         ->select('id', 'name', 'category_id', 'is_active', 'cover_photo')
                         ->latest()
                         ->take(5)
@@ -81,7 +81,6 @@ class DashboardController extends Controller
             ];
 
             return $this->success($data, 'Dashboard data retrieved successfully');
-            
         } catch (\Exception $e) {
             return $this->error('Failed to load dashboard data: ' . $e->getMessage(), 500);
         }
@@ -104,11 +103,10 @@ class DashboardController extends Controller
                     'count' => User::count(),
                 ],
                 'feedbacks' => RequestFeedback::with(['user:id,first_name,last_name,user_type'])->latest()->take(10)->get(),
-                
+
             ];
 
             return $this->success($data, 'Data retrieved successfully');
-            
         } catch (\Exception $e) {
             return $this->error('Failed to load data: ' . $e->getMessage(), 500);
         }
@@ -116,33 +114,34 @@ class DashboardController extends Controller
 
     // get categories with it's services
     public function getCategoriesWithServices(Request $request)
-{
-    try {
-        $categories = Category::with(['services' => function($query) {
-            $query->select('id', 'name', 'category_id', 'icon');
-        }])
-        ->select('id', 'name', 'description', 'icon')
-        ->get()
-        ->map(function ($category) {
-            return [
-                'id' => $category->id,
-                'name' => $category->name,
-                'desc' => $category->description,
-                'icon' => $category->icon,
-                'services' => $category->services->map(function ($service) {
+    {
+        try {
+            $categories = Category::with(['services' => function ($query) {
+                $query->select('id', 'name', 'category_id', 'icon');
+            }])
+                ->select('id', 'name', 'description', 'icon')
+                ->get()
+                ->map(function ($category) {
                     return [
-                        'id' => $service->id,
-                        'name' => $service->name,
-                        'icon' => $service->icon
+                        'id' => $category->id,
+                        'name' => $category->name,
+                        'desc' => $category->description,
+                        'icon' => $category->icon,
+                        'services' => $category->services->map(function ($service) {
+                            return [
+                                'id' => $service->id,
+                                'name' => $service->name,
+                                'icon' => $service->icon
+                            ];
+                        })
                     ];
-                })
-            ];
-        });
+                });
 
-        return $this->success($categories, 'Categories with services retrieved successfully');
-        
-    } catch (\Exception $e) {
-        return $this->error('Failed to load categories with services: ' . $e->getMessage(), 500);
+            return $this->success($categories, 'Categories with services retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to load categories with services: ' . $e->getMessage(), 500);
+        }
     }
-}
+
+    // get category and it's services by category id
 }

@@ -468,7 +468,7 @@ class RequestController extends Controller
 
             $requests = ServiceRequest::with([
                 'services:id,name,price,category_id',
-                'services.category:id,is_multiple',
+                'services.category:id,is_multiple,name',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
                 'feedbacks',
