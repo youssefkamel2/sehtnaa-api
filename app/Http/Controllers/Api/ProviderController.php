@@ -51,6 +51,9 @@ class ProviderController extends Controller
                 ->where('status', 'pending')
                 ->find($requestId);
 
+                print_r($serviceRequest);die;
+                
+
             if (!$serviceRequest) {
                 return $this->error('Request not found or already accepted', 404);
             }
