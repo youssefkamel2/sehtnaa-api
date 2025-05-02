@@ -47,12 +47,9 @@ class ProviderController extends Controller
             DB::beginTransaction();
 
             // Get and validate the request
-            $serviceRequest = ServiceRequest::with(['customer.user'])
+            $serviceRequest = ServiceRequest::with(['customer.user', 'services'])
                 ->where('status', 'pending')
                 ->find($requestId);
-
-                print_r($serviceRequest);die;
-                
 
             if (!$serviceRequest) {
                 return $this->error('Request not found or already accepted', 404);
