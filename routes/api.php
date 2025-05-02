@@ -159,6 +159,7 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
 // landing page
 Route::prefix('landing')->group(function () {
     Route::get('/', [DashboardController::class, 'landing']);
+    Route::get('categories', [DashboardController::class, 'landing']);
 });
 
 
