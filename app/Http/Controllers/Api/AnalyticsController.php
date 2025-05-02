@@ -21,6 +21,7 @@ use App\Exports\CustomersAnalyticsExport;
 use App\Exports\ProvidersAnalyticsExport;
 use App\Models\Request as ServiceRequest;
 use Illuminate\Support\Facades\Validator;
+use App\Exports\ComplaintsAnalyticsExport;
 
 class AnalyticsController extends Controller
 {
@@ -125,11 +126,7 @@ class AnalyticsController extends Controller
                 'registration_trends' => $registrationTrendsChartData,
                 'top_customers' => $topCustomersChartData
             ],
-            'detailed_data' => [
-                'gender_distribution' => $genderDistribution,
-                'registration_trends' => $registrationTrends,
-                'top_customers' => $topCustomers
-            ],
+
             'export_url' => route('admin.analytics.customers.export', [
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date
@@ -338,13 +335,7 @@ class AnalyticsController extends Controller
                 'top_services_by_requests' => $topServicesRequestsChartData,
                 'top_services_by_revenue' => $topServicesRevenueChartData
             ],
-            'detailed_data' => [
-                'category_distribution' => $categoryDistribution,
-                'provider_type_distribution' => $providerTypeDistribution,
-                'creation_trends' => $creationTrends,
-                'top_services_by_requests' => $topServicesByRequests,
-                'top_services_by_revenue' => $topServicesByRevenue
-            ],
+
             'export_url' => route('admin.analytics.services.export', [
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date
@@ -504,12 +495,7 @@ class AnalyticsController extends Controller
                 'request_response_analysis' => $requestResponseChartData,
                 'top_performing_providers' => $topProvidersChartData
             ],
-            'detailed_data' => [
-                'provider_type_distribution' => $providerTypeDistribution,
-                'creation_trends' => $creationTrends,
-                'request_response_stats' => $requestResponseStats,
-                'top_performing_providers' => $topProviders
-            ],
+
             'export_url' => route('admin.analytics.providers.export', [
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date
@@ -721,21 +707,7 @@ class AnalyticsController extends Controller
                 'top_categories' => $topCategoriesChartData,
                 'cancellation_reasons' => $cancellationChartData
             ],
-            'detailed_data' => [
-                'status_distribution' => $statusDistribution,
-                'request_trends' => $requestTrends,
-                'top_categories' => $topCategories,
-                'cancellation_reasons' => $cancellationReasons,
-                'completion_times' => [
-                    'avg_completion_time' => $completionTimes->avg_completion_time ?? null,
-                    'max_completion_time' => $completionTimes->max_completion_time ?? null,
-                    'min_completion_time' => $completionTimes->min_completion_time ?? null
-                ],
-                'revenue_stats' => [
-                    'total_revenue' => number_format($revenueStats->total_revenue ?? 0, 2, '.', ''),
-                    'avg_revenue_per_request' => number_format($revenueStats->avg_revenue_per_request ?? 0, 6, '.', '')
-                ]
-            ],
+
             'export_url' => route('admin.analytics.requests.export', [
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date
@@ -761,6 +733,188 @@ class AnalyticsController extends Controller
         // Store the file
         Excel::store(
             new RequestsAnalyticsExport($request->start_date, $request->end_date),
+            $path,
+            'public'
+        );
+
+        // Return the download URL
+        return $this->success([
+            'download_url' => Storage::url($path),
+            'expires_at' => now()->addHours(self::EXPORT_FILE_LIFETIME)->toDateTimeString()
+        ], 'Export ready for download');
+    }
+
+    // Add this method to your AnalyticsController class
+    public function complaintAnalytics(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        $startDate = Carbon::parse($request->start_date)->startOfDay();
+        $endDate = Carbon::parse($request->end_date)->endOfDay();
+
+        // Basic metrics
+        $totalComplaints = Complaint::whereBetween('created_at', [$startDate, $endDate])->count();
+        $openComplaints = Complaint::where('status', 'open')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+        $inProgressComplaints = Complaint::where('status', 'in_progress')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+        $resolvedComplaints = Complaint::where('status', 'resolved')
+            ->whereBetween('resolved_at', [$startDate, $endDate])
+            ->count();
+        $closedComplaints = Complaint::where('status', 'closed')
+            ->whereBetween('updated_at', [$startDate, $endDate])
+            ->count();
+
+        // Status distribution
+        $statusDistribution = Complaint::select(
+            'status',
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('status')
+            ->get();
+
+        $statusChartData = [
+            'labels' => $statusDistribution->pluck('status')->map(function ($s) {
+                return [
+                    'open' => 'Open',
+                    'in_progress' => 'In Progress',
+                    'resolved' => 'Resolved',
+                    'closed' => 'Closed'
+                ][$s] ?? ucfirst($s);
+            })->toArray(),
+            'values' => $statusDistribution->pluck('count')->toArray()
+        ];
+
+        // Complaint trends over time
+        $complaintTrends = Complaint::select(
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        $complaintTrendsChartData = [
+            'labels' => $complaintTrends->pluck('date')->toArray(),
+            'values' => $complaintTrends->pluck('count')->toArray()
+        ];
+
+        // Resolution time analysis
+        $resolutionTimes = Complaint::select(
+            DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_resolution_time_hours'),
+            DB::raw('MAX(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as max_resolution_time_hours'),
+            DB::raw('MIN(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as min_resolution_time_hours')
+        )
+            ->where('status', 'resolved')
+            ->whereBetween('resolved_at', [$startDate, $endDate])
+            ->whereNotNull('resolved_at')
+            ->first();
+
+        // Top subjects
+        $topSubjects = Complaint::select(
+            'subject',
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('subject')
+            ->orderByDesc('count')
+            ->limit(5)
+            ->get();
+
+        $topSubjectsChartData = [
+            'labels' => $topSubjects->pluck('subject')->toArray(),
+            'values' => $topSubjects->pluck('count')->toArray()
+        ];
+
+        // Complaints by request status
+        $complaintsByRequestStatus = Complaint::join('requests', 'complaints.request_id', '=', 'requests.id')
+            ->select(
+                'requests.status as request_status',
+                DB::raw('count(*) as count')
+            )
+            ->whereBetween('complaints.created_at', [$startDate, $endDate])
+            ->groupBy('request_status')
+            ->get();
+
+        $complaintsByRequestStatusChartData = [
+            'labels' => $complaintsByRequestStatus->pluck('request_status')->map(fn($s) => ucfirst($s))->toArray(),
+            'values' => $complaintsByRequestStatus->pluck('count')->toArray()
+        ];
+
+        // Top complainers
+        $topComplainers = Complaint::join('users', 'complaints.user_id', '=', 'users.id')
+            ->select(
+                'users.id',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('count(*) as complaint_count')
+            )
+            ->whereBetween('complaints.created_at', [$startDate, $endDate])
+            ->groupBy('users.id', 'users.first_name', 'users.last_name')
+            ->orderByDesc('complaint_count')
+            ->limit(10)
+            ->get();
+
+        $topComplainersChartData = [
+            'labels' => $topComplainers->map(fn($c) => $c->first_name . ' ' . $c->last_name)->toArray(),
+            'values' => $topComplainers->pluck('complaint_count')->toArray()
+        ];
+
+        return $this->success([
+            'summary' => [
+                'total_complaints' => $totalComplaints,
+                'open_complaints' => $openComplaints,
+                'in_progress_complaints' => $inProgressComplaints,
+                'resolved_complaints' => $resolvedComplaints,
+                'closed_complaints' => $closedComplaints,
+                'resolution_rate' => $totalComplaints > 0 ? round(($resolvedComplaints / $totalComplaints) * 100, 2) : 0,
+                'avg_resolution_time_hours' => round($resolutionTimes->avg_resolution_time_hours ?? 0, 2),
+            ],
+            'charts' => [
+                'status_distribution' => $statusChartData,
+                'complaint_trends' => $complaintTrendsChartData,
+                'top_subjects' => $topSubjectsChartData,
+                'complaints_by_request_status' => $complaintsByRequestStatusChartData,
+                'top_complainers' => $topComplainersChartData
+            ],
+
+            'export_url' => route('admin.analytics.complaints.export', [
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date
+            ])
+        ], 'Complaint analytics retrieved successfully');
+    }
+
+    // Add this export method
+    public function exportComplaintAnalytics(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        // Generate a unique file name
+        $fileName = 'complaints-export-' . time() . '.xlsx';
+        $path = 'exports/' . $fileName;
+
+        // Store the file
+        Excel::store(
+            new ComplaintsAnalyticsExport($request->start_date, $request->end_date),
             $path,
             'public'
         );
