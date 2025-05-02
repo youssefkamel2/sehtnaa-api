@@ -831,6 +831,11 @@ class RequestController extends Controller
                     'price' => $service->pivot->price
                 ];
             }),
+            // category id, and is multiple
+            'category' => [
+                'id' => $request->services->first()->category_id,
+                'is_multiple' => $request->services->first()->category->is_multiple
+            ],
             'total_price' => $request->total_price,
             'phone' => $request->phone,
             'address' => $request->address,
