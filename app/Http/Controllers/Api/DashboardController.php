@@ -115,37 +115,34 @@ class DashboardController extends Controller
     // get categories with it's services
     public function getCategoriesWithServices(Request $request)
     {
-        try {
-            $categories = Category::with(['services' => function ($query) {
-                $query->select('id', 'name', 'category_id', 'icon');
-            }])
-                ->select('id', 'name', 'description', 'icon')
-                ->get()
-                ->map(function ($category) {
-                    return [
-                        'id' => $category->id,
-                        'name' => $category->name,
-                        'desc' => $category->description,
-                        'icon' => $category->icon,
-                        'services' => $category->services->map(function ($service) {
-                            return [
-                                'id' => $service->id,
-                                'name' => $service->name,
-                                'icon' => $service->icon
-                            ];
-                        })
-                    ];
-                });
-
-            return $this->success($categories, 'Categories with services retrieved successfully');
-        } catch (\Exception $e) {
-            return $this->error('Failed to load categories with services: ' . $e->getMessage(), 500);
+        // return only the active categories
+        $categories = Category::with(['services' => function ($query) {
+            $query->select('id', 'name', 'category_id', 'icon');
+        }])
+            ->select('id', 'name', 'description', 'icon')
+            ->where('status', 1)
+            ->get();
+        if ($categories->isEmpty()) {
+            return $this->error('No categories found', 404);
         }
+        return $this->success($categories, 'Categories with services retrieved successfully');
+
+        
     }
 
     // get category and it's services by category id
     public function getCategoryWithServices(Request $request, $id)
     {
+
+        $category = Category::find($id);
+
+        if (!$category) {
+            return $this->error('Category not found', 404);
+        }
+        if ($category->status == 0) {
+            return $this->error('Category is inactive', 403);
+        }
+
         try {
             $category = Category::with(['services' => function ($query) {
                 $query->select('id', 'name', 'category_id', 'icon');
@@ -162,9 +159,18 @@ class DashboardController extends Controller
     // get service by id
     public function getServiceById(Request $request, $id)
     {
+
+        $service = Service::find($id);
+        if (!$service) {
+            return $this->error('Service not found', 404);
+        }
+        if ($service->status == 0) {
+            return $this->error('Service is inactive', 403);
+        }
+
         try {
             $service = Service::with(['category' => function ($query) {
-                $query->select('id', 'name', 'icon', 'description', 'cover_photo');
+                $query->select('id', 'name', 'icon', 'description');
             }])
                 ->select('id', 'name', 'category_id', 'icon', 'cover_photo', 'description')
                 ->findOrFail($id);
