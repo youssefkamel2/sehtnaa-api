@@ -468,7 +468,7 @@ class RequestController extends Controller
             $providerId = $user->user_type === 'provider' ? $user->provider->id : null;
 
             $requests = ServiceRequest::with([
-                'service:id,name,price',
+                'services:id,name,price',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
                 'feedbacks',

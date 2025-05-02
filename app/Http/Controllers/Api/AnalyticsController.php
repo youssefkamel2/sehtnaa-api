@@ -382,139 +382,139 @@ class AnalyticsController extends Controller
 
     // Provider Analytics
     public function providerAnalytics(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'start_date' => 'required|date',
-        'end_date' => 'required|date|after_or_equal:start_date',
-    ]);
+    {
+        $validator = Validator::make($request->all(), [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
 
-    if ($validator->fails()) {
-        return $this->error($validator->errors()->first(), 422);
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        $startDate = Carbon::parse($request->start_date)->startOfDay();
+        $endDate = Carbon::parse($request->end_date)->endOfDay();
+
+        // Basic metrics
+        $totalProviders = Provider::whereBetween('created_at', [$startDate, $endDate])->count();
+        $activeProviders = Provider::whereHas('user', fn($q) => $q->where('status', 'active'))
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+
+        // Growth metrics
+        $previousPeriodProviders = Provider::whereBetween('created_at', [
+            $startDate->copy()->subDays($startDate->diffInDays($endDate)),
+            $startDate
+        ])->count();
+
+        $growthRate = $previousPeriodProviders > 0
+            ? (($totalProviders - $previousPeriodProviders) / $previousPeriodProviders) * 100
+            : 100;
+
+        // Provider type distribution
+        $providerTypeDistribution = Provider::select(
+            'provider_type',
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('provider_type')
+            ->get();
+
+        $providerTypeChartData = [
+            'labels' => $providerTypeDistribution->pluck('provider_type')->toArray(),
+            'values' => $providerTypeDistribution->pluck('count')->toArray()
+        ];
+
+        // Time-based provider creation data
+        $creationTrends = Provider::select(
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        $creationTrendsChartData = [
+            'labels' => $creationTrends->pluck('date')->toArray(),
+            'values' => $creationTrends->pluck('count')->toArray()
+        ];
+
+        // Request response analysis
+        $requestResponseStats = DB::table('request_providers')
+            ->select(
+                'providers.id',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('count(case when request_providers.status = "accepted" then 1 end) as accepted_count'),
+                DB::raw('count(case when request_providers.status = "rejected" then 1 end) as rejected_count'),
+                DB::raw('count(case when request_providers.status = "pending" then 1 end) as pending_count'),
+                DB::raw('count(*) as total_offers')
+            )
+            ->join('providers', 'request_providers.provider_id', '=', 'providers.id')
+            ->join('users', 'providers.user_id', '=', 'users.id')
+            ->whereBetween('request_providers.created_at', [$startDate, $endDate])
+            ->groupBy('providers.id', 'users.first_name', 'users.last_name')
+            ->orderByDesc('total_offers')
+            ->limit(10)
+            ->get();
+
+        $requestResponseChartData = [
+            'labels' => $requestResponseStats->map(fn($p) => $p->first_name . ' ' . $p->last_name)->toArray(),
+            'accepted' => $requestResponseStats->pluck('accepted_count')->toArray(),
+            'rejected' => $requestResponseStats->pluck('rejected_count')->toArray(),
+            'pending' => $requestResponseStats->pluck('pending_count')->toArray()
+        ];
+
+        // Top performing providers (by completed requests)
+        $topProviders = DB::table('requests')
+            ->select(
+                'providers.id',
+                'users.first_name',
+                'users.last_name',
+                DB::raw('count(*) as completed_requests'),
+                DB::raw('sum(requests.total_price) as total_revenue')
+            )
+            ->join('providers', 'requests.assigned_provider_id', '=', 'providers.id')
+            ->join('users', 'providers.user_id', '=', 'users.id')
+            ->where('requests.status', 'completed')
+            ->whereBetween('requests.completed_at', [$startDate, $endDate])
+            ->groupBy('providers.id', 'users.first_name', 'users.last_name')
+            ->orderByDesc('completed_requests')
+            ->limit(10)
+            ->get();
+
+        $topProvidersChartData = [
+            'labels' => $topProviders->map(fn($p) => $p->first_name . ' ' . $p->last_name)->toArray(),
+            'completed_requests' => $topProviders->pluck('completed_requests')->toArray(),
+            'revenue' => $topProviders->pluck('total_revenue')->toArray()
+        ];
+
+        return $this->success([
+            'summary' => [
+                'total_providers' => $totalProviders,
+                'active_providers' => $activeProviders,
+                'inactive_providers' => $totalProviders - $activeProviders,
+                'growth_rate' => round($growthRate, 2),
+            ],
+            'charts' => [
+                'provider_type_distribution' => $providerTypeChartData,
+                'creation_trends' => $creationTrendsChartData,
+                'request_response_analysis' => $requestResponseChartData,
+                'top_performing_providers' => $topProvidersChartData
+            ],
+            'detailed_data' => [
+                'provider_type_distribution' => $providerTypeDistribution,
+                'creation_trends' => $creationTrends,
+                'request_response_stats' => $requestResponseStats,
+                'top_performing_providers' => $topProviders
+            ],
+            'export_url' => route('admin.analytics.providers.export', [
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date
+            ])
+        ], 'Provider analytics retrieved successfully');
     }
-
-    $startDate = Carbon::parse($request->start_date)->startOfDay();
-    $endDate = Carbon::parse($request->end_date)->endOfDay();
-
-    // Basic metrics
-    $totalProviders = Provider::whereBetween('created_at', [$startDate, $endDate])->count();
-    $activeProviders = Provider::whereHas('user', fn($q) => $q->where('status', 'active'))
-        ->whereBetween('created_at', [$startDate, $endDate])
-        ->count();
-
-    // Growth metrics
-    $previousPeriodProviders = Provider::whereBetween('created_at', [
-        $startDate->copy()->subDays($startDate->diffInDays($endDate)),
-        $startDate
-    ])->count();
-
-    $growthRate = $previousPeriodProviders > 0
-        ? (($totalProviders - $previousPeriodProviders) / $previousPeriodProviders) * 100
-        : 100;
-
-    // Provider type distribution
-    $providerTypeDistribution = Provider::select(
-        'provider_type',
-        DB::raw('count(*) as count')
-    )
-        ->whereBetween('created_at', [$startDate, $endDate])
-        ->groupBy('provider_type')
-        ->get();
-
-    $providerTypeChartData = [
-        'labels' => $providerTypeDistribution->pluck('provider_type')->toArray(),
-        'values' => $providerTypeDistribution->pluck('count')->toArray()
-    ];
-
-    // Time-based provider creation data
-    $creationTrends = Provider::select(
-        DB::raw('DATE(created_at) as date'),
-        DB::raw('count(*) as count')
-    )
-        ->whereBetween('created_at', [$startDate, $endDate])
-        ->groupBy('date')
-        ->orderBy('date')
-        ->get();
-
-    $creationTrendsChartData = [
-        'labels' => $creationTrends->pluck('date')->toArray(),
-        'values' => $creationTrends->pluck('count')->toArray()
-    ];
-
-    // Request response analysis
-    $requestResponseStats = DB::table('request_providers')
-        ->select(
-            'providers.id',
-            'users.first_name',
-            'users.last_name',
-            DB::raw('count(case when request_providers.status = "accepted" then 1 end) as accepted_count'),
-            DB::raw('count(case when request_providers.status = "rejected" then 1 end) as rejected_count'),
-            DB::raw('count(case when request_providers.status = "pending" then 1 end) as pending_count'),
-            DB::raw('count(*) as total_offers')
-        )
-        ->join('providers', 'request_providers.provider_id', '=', 'providers.id')
-        ->join('users', 'providers.user_id', '=', 'users.id')
-        ->whereBetween('request_providers.created_at', [$startDate, $endDate])
-        ->groupBy('providers.id', 'users.first_name', 'users.last_name')
-        ->orderByDesc('total_offers')
-        ->limit(10)
-        ->get();
-
-    $requestResponseChartData = [
-        'labels' => $requestResponseStats->map(fn($p) => $p->first_name . ' ' . $p->last_name)->toArray(),
-        'accepted' => $requestResponseStats->pluck('accepted_count')->toArray(),
-        'rejected' => $requestResponseStats->pluck('rejected_count')->toArray(),
-        'pending' => $requestResponseStats->pluck('pending_count')->toArray()
-    ];
-
-    // Top performing providers (by completed requests)
-    $topProviders = DB::table('requests')
-        ->select(
-            'providers.id',
-            'users.first_name',
-            'users.last_name',
-            DB::raw('count(*) as completed_requests'),
-            DB::raw('sum(requests.total_price) as total_revenue')
-        )
-        ->join('providers', 'requests.assigned_provider_id', '=', 'providers.id')
-        ->join('users', 'providers.user_id', '=', 'users.id')
-        ->where('requests.status', 'completed')
-        ->whereBetween('requests.completed_at', [$startDate, $endDate])
-        ->groupBy('providers.id', 'users.first_name', 'users.last_name')
-        ->orderByDesc('completed_requests')
-        ->limit(10)
-        ->get();
-
-    $topProvidersChartData = [
-        'labels' => $topProviders->map(fn($p) => $p->first_name . ' ' . $p->last_name)->toArray(),
-        'completed_requests' => $topProviders->pluck('completed_requests')->toArray(),
-        'revenue' => $topProviders->pluck('total_revenue')->toArray()
-    ];
-
-    return $this->success([
-        'summary' => [
-            'total_providers' => $totalProviders,
-            'active_providers' => $activeProviders,
-            'inactive_providers' => $totalProviders - $activeProviders,
-            'growth_rate' => round($growthRate, 2),
-        ],
-        'charts' => [
-            'provider_type_distribution' => $providerTypeChartData,
-            'creation_trends' => $creationTrendsChartData,
-            'request_response_analysis' => $requestResponseChartData,
-            'top_performing_providers' => $topProvidersChartData
-        ],
-        'detailed_data' => [
-            'provider_type_distribution' => $providerTypeDistribution,
-            'creation_trends' => $creationTrends,
-            'request_response_stats' => $requestResponseStats,
-            'top_performing_providers' => $topProviders
-        ],
-        'export_url' => route('admin.analytics.providers.export', [
-            'start_date' => $request->start_date,
-            'end_date' => $request->end_date
-        ])
-    ], 'Provider analytics retrieved successfully');
-}
 
     public function exportProviderAnalytics(Request $request)
     {
