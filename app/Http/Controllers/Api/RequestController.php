@@ -250,9 +250,8 @@ class RequestController extends Controller
                 DB::commit();
 
                 return $this->success([
-                    'request' => $serviceRequest->load('services'),
-                    'message' => 'Request created successfully'
-                ]);
+                    'request' => $serviceRequest->load('services')
+                ], 'Request created successfully');
             } catch (\Exception $e) {
                 DB::rollBack();
                 Log::error('Request creation failed: ' . $e->getMessage());

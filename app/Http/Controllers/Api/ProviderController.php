@@ -47,7 +47,7 @@ class ProviderController extends Controller
             DB::beginTransaction();
 
             // Get and validate the request
-            $serviceRequest = ServiceRequest::with(['customer.user', 'service'])
+            $serviceRequest = ServiceRequest::with(['customer.user'])
                 ->where('status', 'pending')
                 ->find($requestId);
 
