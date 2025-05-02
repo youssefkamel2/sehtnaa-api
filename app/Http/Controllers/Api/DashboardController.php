@@ -120,7 +120,7 @@ class DashboardController extends Controller
             $query->select('id', 'name', 'category_id', 'icon');
         }])
             ->select('id', 'name', 'description', 'icon')
-            ->where('status', 1)
+            ->where('is_active', 1)
             ->get();
         if ($categories->isEmpty()) {
             return $this->error('No categories found', 404);
@@ -139,7 +139,7 @@ class DashboardController extends Controller
         if (!$category) {
             return $this->error('Category not found', 404);
         }
-        if ($category->status == 0) {
+        if ($category->is_active == 0) {
             return $this->error('Category is inactive', 403);
         }
 
@@ -164,7 +164,7 @@ class DashboardController extends Controller
         if (!$service) {
             return $this->error('Service not found', 404);
         }
-        if ($service->status == 0) {
+        if ($service->is_active == 0) {
             return $this->error('Service is inactive', 403);
         }
 
