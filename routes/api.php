@@ -87,30 +87,27 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
     Route::prefix('analytics')->group(function () {
         // Customers
     Route::get('/customers', [AnalyticsController::class, 'customerAnalytics']);
-    Route::get('/customers/export', [AnalyticsController::class, 'exportCustomerAnalytics'])->name('admin.analytics.customers.export');
+    Route::get('/customers-export', [AnalyticsController::class, 'exportCustomerAnalytics'])->name('admin.analytics.customers.export');
     
     // Services
     Route::get('/services', [AnalyticsController::class, 'serviceAnalytics']);
-    Route::get('/services/export', [AnalyticsController::class, 'exportServiceAnalytics'])->name('admin.analytics.services.export');
-    
-    // Categories
-    Route::get('/categories', [AnalyticsController::class, 'categoryAnalytics']);
-    Route::get('/categories/export', [AnalyticsController::class, 'exportCategoryAnalytics']);
+    Route::get('/services-export', [AnalyticsController::class, 'exportServiceAnalytics'])->name('admin.analytics.services.export');
     
     // Providers
     Route::get('/providers', [AnalyticsController::class, 'providerAnalytics']);
-    Route::get('/providers/export', [AnalyticsController::class, 'exportProviderAnalytics']);
+    Route::get('/providers-export', [AnalyticsController::class, 'exportProviderAnalytics'])->name('admin.analytics.providers.export');
     
     // Complaints
     Route::get('/complaints', [AnalyticsController::class, 'complaintAnalytics']);
-    Route::get('/complaints/export', [AnalyticsController::class, 'exportComplaintAnalytics']);
+    Route::get('/complaints-export', [AnalyticsController::class, 'exportComplaintAnalytics']);
     
     // Requests
     Route::get('/requests', [AnalyticsController::class, 'requestAnalytics']);
-    Route::get('/requests/export', [AnalyticsController::class, 'exportRequestAnalytics']);
+    Route::get('/requests-export', [AnalyticsController::class, 'exportRequestAnalytics']);
     
     });
 });
+
 
 Route::prefix('user')->middleware(['auth:api'])->group(function () {
 
@@ -163,3 +160,6 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
 Route::prefix('landing')->group(function () {
     Route::get('/', [DashboardController::class, 'landing']);
 });
+
+
+

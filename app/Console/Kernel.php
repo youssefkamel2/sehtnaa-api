@@ -2,11 +2,12 @@
 
 namespace App\Console;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\File;
+use Illuminate\Console\Scheduling\Schedule;
+use App\Http\Controllers\Api\AnalyticsController;
+use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
@@ -131,6 +132,12 @@ class Kernel extends ConsoleKernel
             ->onFailure(function () {
                 Log::channel('scheduler')->error('Log files cleanup failed');
             });
+
+        // Cleanup expired export files
+        $schedule->call(function () {
+            $deleted = AnalyticsController::cleanupExpiredExports();
+            Log::info("Deleted {$deleted} expired export files");
+        })->hourly();
     }
 
     protected function commands(): void

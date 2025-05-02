@@ -51,6 +51,16 @@ class RequestController extends Controller
                 return $this->error('Customer profile not found', 404);
             }
 
+            // Handle JSON string inputs
+            $serviceIds = json_decode($request->service_ids, true) ?? [];
+            $requirements = json_decode($request->requirements, true) ?? [];
+
+            // Replace the original values with decoded ones
+            $request->merge([
+                'service_ids' => $serviceIds,
+                'requirements' => $requirements
+            ]);
+
             // Validate input
             $validator = Validator::make($request->all(), [
                 'service_ids' => 'required|array|min:1',
@@ -61,14 +71,14 @@ class RequestController extends Controller
                 'gender' => 'required|in:male,female',
                 'additional_info' => 'nullable|string',
                 'age' => 'required|integer|min:1',
-                'address' => 'nullable|string',
+                'name' => 'required|string',
+                'requirements' => 'nullable|array',
             ]);
 
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
 
-            $serviceIds = $request->service_ids;
             $services = Service::with('category')->whereIn('id', $serviceIds)->get();
 
             // Check if all services exist
@@ -112,17 +122,6 @@ class RequestController extends Controller
 
             // Get requirements for all services
             $serviceRequirements = ServiceRequirement::whereIn('service_id', $serviceIds)->get();
-
-            // Handle requirements if they are sent as JSON string
-            $requirements = $request->requirements;
-            if (is_string($requirements)) {
-                try {
-                    $requirements = json_decode($requirements, true, 512, JSON_THROW_ON_ERROR);
-                    $request->merge(['requirements' => $requirements]);
-                } catch (\JsonException $e) {
-                    return $this->error('Invalid requirements format', 422);
-                }
-            }
 
             // Prepare validation rules for requirements
             $requirementRules = [];
@@ -186,7 +185,7 @@ class RequestController extends Controller
                     'current_search_radius' => 1,
                     'expansion_attempts' => 0,
                     'total_price' => $totalPrice,
-                    'name' => $request->name ?? $user->customer->user->name
+                    'name' => $request->name
                 ]);
 
                 // Attach all services to the request with their individual prices
@@ -270,80 +269,101 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-    
+
             if ($user->user_type !== 'customer') {
                 return $this->error('Only customers can modify requests', 403);
             }
-    
+
             if (!$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-    
+
+            // Handle JSON string input
+            $serviceIds = json_decode($request->service_ids, true) ?? [];
+            $request->merge(['service_ids' => $serviceIds]);
+
             $validator = Validator::make($request->all(), [
-                'service_id' => 'required|exists:services,id',
+                'service_ids' => 'required|array|min:1',
+                'service_ids.*' => 'exists:services,id',
             ]);
-    
+
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-    
+
             $serviceRequest = ServiceRequest::with(['services.category'])
                 ->where('customer_id', $user->customer->id)
                 ->whereIn('status', ['pending', 'accepted'])
                 ->find($id);
-    
+
             if (!$serviceRequest) {
                 return $this->error('Request not found or not modifiable', 404);
             }
-    
-            $newService = Service::with('category')->find($request->service_id);
-            if (!$newService) {
-                return $this->error('Service not found', 404);
+
+            $newServices = Service::with('category')->whereIn('id', $serviceIds)->get();
+
+            // Check if all services exist
+            if ($newServices->count() !== count($serviceIds)) {
+                return $this->error('One or more services not found', 404);
             }
-    
-            if ($serviceRequest->services->contains($newService->id)) {
-                return $this->error('Service already exists in this request', 400);
-            }
-    
+
             $existingCategory = $serviceRequest->services->first()->category;
-            
-            if ($newService->category_id !== $existingCategory->id) {
-                return $this->error('Service must belong to the same category as existing services', 400);
+
+            // Check if new services belong to same category
+            foreach ($newServices as $newService) {
+                if ($newService->category_id !== $existingCategory->id) {
+                    return $this->error('All services must belong to the same category as existing services', 400);
+                }
             }
-    
-            if (!$existingCategory->is_multiple && $serviceRequest->services->count() >= 1) {
+
+            if (!$existingCategory->is_multiple && ($serviceRequest->services->count() + count($serviceIds)) > 1) {
                 return $this->error('This category does not support multiple services', 400);
             }
-    
+
+            // Check for duplicate services
+            $existingServiceIds = $serviceRequest->services->pluck('id')->toArray();
+            $duplicates = array_intersect($existingServiceIds, $serviceIds);
+            if (!empty($duplicates)) {
+                return $this->error('One or more services already exist in this request', 400);
+            }
+
             DB::beginTransaction();
-    
+
             try {
-                $serviceRequest->services()->attach($newService->id, ['price' => $newService->price]);
-    
-                $newTotalPrice = $serviceRequest->services->sum('pivot.price') + $newService->price;
+                // Attach new services with their prices
+                $serviceRequest->services()->attach(
+                    $newServices->mapWithKeys(function ($service) {
+                        return [$service->id => ['price' => $service->price]];
+                    })
+                );
+
+                // Calculate new total price
+                $newTotalPrice = $serviceRequest->services->sum('pivot.price') + $newServices->sum('price');
                 $serviceRequest->total_price = $newTotalPrice;
                 $serviceRequest->save();
-    
+
                 if ($serviceRequest->status === 'accepted' && $serviceRequest->assigned_provider_id) {
-                    $this->notifyProviderAboutServiceAddition($serviceRequest, $newService);
+                    foreach ($newServices as $newService) {
+                        $this->notifyProviderAboutServiceAddition($serviceRequest, $newService);
+                    }
                 }
 
                 DB::commit();
-    
+
                 return $this->success([
                     'request' => $serviceRequest->fresh()->load('services')
-                ], 'Service added successfully');
+                ], 'Services added successfully');
             } catch (\Exception $e) {
                 DB::rollBack();
-                Log::error('Failed to add service to request: ' . $e->getMessage());
-                return $this->error('Failed to add service to request: ' . $e->getMessage(), 500);
+                Log::error('Failed to add services to request: ' . $e->getMessage());
+                return $this->error('Failed to add services to request: ' . $e->getMessage(), 500);
             }
         } catch (\Exception $e) {
             Log::error('Request processing failed: ' . $e->getMessage());
             return $this->error('Failed to process request: ' . $e->getMessage(), 500);
         }
     }
-    
+
     protected function notifyProviderAboutServiceAddition($serviceRequest, $newService)
     {
         $provider = $serviceRequest->assignedProvider;
@@ -354,7 +374,7 @@ class RequestController extends Controller
             ]);
             return;
         }
-    
+
         try {
             $this->firebaseService->sendToDevice(
                 $provider->user->fcm_token,
@@ -368,7 +388,6 @@ class RequestController extends Controller
                     'new_total_price' => $serviceRequest->total_price
                 ]
             );
-    
         } catch (\Exception $e) {
             Log::error('Failed to notify provider about service addition: ' . $e->getMessage());
         }

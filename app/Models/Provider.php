@@ -38,5 +38,18 @@ class Provider extends Model
         return $this->hasMany(ProviderDocument::class);
     }
 
-    
+    // requests
+    public function requests()
+    {
+        return $this->hasMany(Request::class);
+    }
+    public function requestProviders()
+    {
+        return $this->hasMany(RequestProvider::class);
+    }
+
+    public function assignedRequests()
+{
+    return $this->hasMany(Request::class, 'assigned_provider_id');
+}
 }
