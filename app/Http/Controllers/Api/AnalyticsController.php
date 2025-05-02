@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
+use App\Exports\RequestsAnalyticsExport;
 use App\Exports\ServicesAnalyticsExport;
 use App\Exports\CustomersAnalyticsExport;
 use App\Exports\ProvidersAnalyticsExport;
@@ -534,6 +535,195 @@ class AnalyticsController extends Controller
         // Store the file
         Excel::store(
             new ProvidersAnalyticsExport($request->start_date, $request->end_date),
+            $path,
+            'public'
+        );
+
+        // Return the download URL
+        return $this->success([
+            'download_url' => Storage::url($path),
+            'expires_at' => now()->addHours(self::EXPORT_FILE_LIFETIME)->toDateTimeString()
+        ], 'Export ready for download');
+    }
+
+    // Add these methods to your AnalyticsController class
+
+    public function requestAnalytics(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        $startDate = Carbon::parse($request->start_date)->startOfDay();
+        $endDate = Carbon::parse($request->end_date)->endOfDay();
+
+        // Basic metrics
+        $totalRequests = ServiceRequest::whereBetween('created_at', [$startDate, $endDate])->count();
+        $completedRequests = ServiceRequest::where('status', 'completed')
+            ->whereBetween('completed_at', [$startDate, $endDate])
+            ->count();
+        $cancelledRequests = ServiceRequest::where('status', 'cancelled')
+            ->whereBetween('updated_at', [$startDate, $endDate])
+            ->count();
+        $pendingRequests = ServiceRequest::where('status', 'pending')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+        $acceptedRequests = ServiceRequest::where('status', 'accepted')
+            ->whereBetween('updated_at', [$startDate, $endDate])
+            ->count();
+
+        // Growth metrics
+        $previousPeriodRequests = ServiceRequest::whereBetween('created_at', [
+            $startDate->copy()->subDays($startDate->diffInDays($endDate)),
+            $startDate
+        ])->count();
+
+        $growthRate = $previousPeriodRequests > 0
+            ? (($totalRequests - $previousPeriodRequests) / $previousPeriodRequests) * 100
+            : 100;
+
+        // Status distribution
+        $statusDistribution = ServiceRequest::select(
+            'status',
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('status')
+            ->get();
+
+        $statusChartData = [
+            'labels' => $statusDistribution->pluck('status')->map(fn($s) => ucfirst($s))->toArray(),
+            'values' => $statusDistribution->pluck('count')->toArray()
+        ];
+
+        // Request trends over time
+        $requestTrends = ServiceRequest::select(
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('count(*) as count')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        $requestTrendsChartData = [
+            'labels' => $requestTrends->pluck('date')->toArray(),
+            'values' => $requestTrends->pluck('count')->toArray()
+        ];
+
+        // Completion time analysis
+        $completionTimes = ServiceRequest::select(
+            DB::raw('AVG(TIMESTAMPDIFF(MINUTE, started_at, completed_at)) as avg_completion_time'),
+            DB::raw('MAX(TIMESTAMPDIFF(MINUTE, started_at, completed_at)) as max_completion_time'),
+            DB::raw('MIN(TIMESTAMPDIFF(MINUTE, started_at, completed_at)) as min_completion_time')
+        )
+            ->where('status', 'completed')
+            ->whereBetween('completed_at', [$startDate, $endDate])
+            ->first();
+
+        // Revenue analysis
+        $revenueStats = ServiceRequest::select(
+            DB::raw('SUM(total_price) as total_revenue'),
+            DB::raw('AVG(total_price) as avg_revenue_per_request')
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->first();
+
+        // Top categories by request count
+        $topCategories = DB::table('request_services')
+            ->select(
+                'categories.id',
+                'categories.name',
+                DB::raw('count(*) as request_count')
+            )
+            ->join('services', 'request_services.service_id', '=', 'services.id')
+            ->join('categories', 'services.category_id', '=', 'categories.id')
+            ->join('requests', 'request_services.request_id', '=', 'requests.id')
+            ->whereBetween('requests.created_at', [$startDate, $endDate])
+            ->groupBy('categories.id', 'categories.name')
+            ->orderByDesc('request_count')
+            ->limit(5)
+            ->get();
+
+        $topCategoriesChartData = [
+            'labels' => $topCategories->pluck('name')->toArray(),
+            'values' => $topCategories->pluck('request_count')->toArray()
+        ];
+
+        // Cancellation reasons (if you have this data)
+        $cancellationReasons = DB::table('request_cancellation_logs')
+            ->select(
+                'reason',
+                DB::raw('count(*) as count')
+            )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('reason')
+            ->orderByDesc('count')
+            ->get();
+
+        $cancellationChartData = [
+            'labels' => $cancellationReasons->pluck('reason')->toArray(),
+            'values' => $cancellationReasons->pluck('count')->toArray()
+        ];
+
+        return $this->success([
+            'summary' => [
+                'total_requests' => $totalRequests,
+                'completed_requests' => $completedRequests,
+                'cancelled_requests' => $cancelledRequests,
+                'pending_requests' => $pendingRequests,
+                'accepted_requests' => $acceptedRequests,
+                'completion_rate' => $totalRequests > 0 ? round(($completedRequests / $totalRequests) * 100, 2) : 0,
+                'cancellation_rate' => $totalRequests > 0 ? round(($cancelledRequests / $totalRequests) * 100, 2) : 0,
+                'growth_rate' => round($growthRate, 2),
+                'avg_completion_time_minutes' => round($completionTimes->avg_completion_time ?? 0, 2),
+                'total_revenue' => $revenueStats->total_revenue ?? 0,
+                'avg_revenue_per_request' => $revenueStats->avg_revenue_per_request ?? 0
+            ],
+            'charts' => [
+                'status_distribution' => $statusChartData,
+                'request_trends' => $requestTrendsChartData,
+                'top_categories' => $topCategoriesChartData,
+                'cancellation_reasons' => $cancellationChartData
+            ],
+            'detailed_data' => [
+                'status_distribution' => $statusDistribution,
+                'request_trends' => $requestTrends,
+                'top_categories' => $topCategories,
+                'cancellation_reasons' => $cancellationReasons,
+                'completion_times' => $completionTimes,
+                'revenue_stats' => $revenueStats
+            ],
+            'export_url' => route('admin.analytics.requests.export', [
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date
+            ])
+        ], 'Request analytics retrieved successfully');
+    }
+
+    public function exportRequestAnalytics(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        // Generate a unique file name
+        $fileName = 'requests-export-' . time() . '.xlsx';
+        $path = 'exports/' . $fileName;
+
+        // Store the file
+        Excel::store(
+            new RequestsAnalyticsExport($request->start_date, $request->end_date),
             $path,
             'public'
         );
