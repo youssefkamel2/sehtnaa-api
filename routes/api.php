@@ -103,7 +103,7 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
     
     // Requests
     Route::get('/requests', [AnalyticsController::class, 'requestAnalytics']);
-    Route::get('/requests-export', [AnalyticsController::class, 'exportRequestAnalytics'])->na;
+    Route::get('/requests-export', [AnalyticsController::class, 'exportRequestAnalytics'])->name('admin.analytics.requests.export');
     
     });
 });
