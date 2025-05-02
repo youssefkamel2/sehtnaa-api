@@ -546,7 +546,6 @@ class AnalyticsController extends Controller
         ], 'Export ready for download');
     }
 
-    // Add these methods to your AnalyticsController class
 
     public function requestAnalytics(Request $request)
     {
@@ -634,6 +633,20 @@ class AnalyticsController extends Controller
             ->whereBetween('created_at', [$startDate, $endDate])
             ->first();
 
+        // Helper function to handle multilingual names
+        $getName = function ($name) {
+            if (is_array($name)) {
+                return $name;
+            }
+            if (is_string($name) && json_decode($name)) {
+                return json_decode($name, true);
+            }
+            return [
+                'en' => $name,
+                'ar' => $name
+            ];
+        };
+
         // Top categories by request count
         $topCategories = DB::table('request_services')
             ->select(
@@ -648,11 +661,20 @@ class AnalyticsController extends Controller
             ->groupBy('categories.id', 'categories.name')
             ->orderByDesc('request_count')
             ->limit(5)
-            ->get();
+            ->get()
+            ->map(function ($category) use ($getName) {
+                $name = $getName($category->name);
+                return [
+                    'id' => $category->id,
+                    'name' => $name,
+                    'request_count' => $category->request_count
+                ];
+            });
 
         $topCategoriesChartData = [
-            'labels' => $topCategories->pluck('name')->toArray(),
-            'values' => $topCategories->pluck('request_count')->toArray()
+            'labels' => $topCategories->pluck('name.en')->toArray(),
+            'values' => $topCategories->pluck('request_count')->toArray(),
+            'labels_ar' => $topCategories->pluck('name.ar')->toArray()
         ];
 
         // Cancellation reasons (if you have this data)
@@ -664,11 +686,19 @@ class AnalyticsController extends Controller
             ->whereBetween('created_at', [$startDate, $endDate])
             ->groupBy('reason')
             ->orderByDesc('count')
-            ->get();
+            ->get()
+            ->map(function ($reason) use ($getName) {
+                $reasonText = $getName($reason->reason);
+                return [
+                    'reason' => $reasonText,
+                    'count' => $reason->count
+                ];
+            });
 
         $cancellationChartData = [
-            'labels' => $cancellationReasons->pluck('reason')->toArray(),
-            'values' => $cancellationReasons->pluck('count')->toArray()
+            'labels' => $cancellationReasons->pluck('reason.en')->toArray(),
+            'values' => $cancellationReasons->pluck('count')->toArray(),
+            'labels_ar' => $cancellationReasons->pluck('reason.ar')->toArray()
         ];
 
         return $this->success([
@@ -682,8 +712,8 @@ class AnalyticsController extends Controller
                 'cancellation_rate' => $totalRequests > 0 ? round(($cancelledRequests / $totalRequests) * 100, 2) : 0,
                 'growth_rate' => round($growthRate, 2),
                 'avg_completion_time_minutes' => round($completionTimes->avg_completion_time ?? 0, 2),
-                'total_revenue' => $revenueStats->total_revenue ?? 0,
-                'avg_revenue_per_request' => $revenueStats->avg_revenue_per_request ?? 0
+                'total_revenue' => number_format($revenueStats->total_revenue ?? 0, 2, '.', ''),
+                'avg_revenue_per_request' => number_format($revenueStats->avg_revenue_per_request ?? 0, 6, '.', '')
             ],
             'charts' => [
                 'status_distribution' => $statusChartData,
@@ -696,8 +726,15 @@ class AnalyticsController extends Controller
                 'request_trends' => $requestTrends,
                 'top_categories' => $topCategories,
                 'cancellation_reasons' => $cancellationReasons,
-                'completion_times' => $completionTimes,
-                'revenue_stats' => $revenueStats
+                'completion_times' => [
+                    'avg_completion_time' => $completionTimes->avg_completion_time ?? null,
+                    'max_completion_time' => $completionTimes->max_completion_time ?? null,
+                    'min_completion_time' => $completionTimes->min_completion_time ?? null
+                ],
+                'revenue_stats' => [
+                    'total_revenue' => number_format($revenueStats->total_revenue ?? 0, 2, '.', ''),
+                    'avg_revenue_per_request' => number_format($revenueStats->avg_revenue_per_request ?? 0, 6, '.', '')
+                ]
             ],
             'export_url' => route('admin.analytics.requests.export', [
                 'start_date' => $request->start_date,
