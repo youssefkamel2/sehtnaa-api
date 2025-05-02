@@ -29,7 +29,7 @@ class ComplaintController extends Controller
         try {
             // return all complaints
             $complaints = Complaint::with([
-                'request.service:id,name',
+                'request.services:id,name',
                 'request.assignedProvider.user:id,first_name,last_name',
                 'user:id,first_name,last_name'
             ])->get();
@@ -44,7 +44,7 @@ class ComplaintController extends Controller
     {
         try {
             $complaint = Complaint::with([
-                'request.service',
+                'request.services',
                 'request.customer.user',
                 'request.assignedProvider.user',
                 'user:id,first_name,last_name',
