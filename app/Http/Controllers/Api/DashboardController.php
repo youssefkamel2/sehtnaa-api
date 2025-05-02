@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\User;
 use App\Models\Service;
+use App\Models\Category;
 use App\Models\Customer;
 use App\Models\Provider;
 use Illuminate\Http\Request;
@@ -115,36 +116,33 @@ class DashboardController extends Controller
 
     // get categories with it's services
     public function getCategoriesWithServices(Request $request)
-    {
-        try {
-            $categories = Service::with(['category' => function($query) {
-                $query->select('id', 'name', 'icon', 'description');
-            }])
-            ->select('id', 'name', 'category_id')
-            ->get()
-            ->groupBy('category_id')
-            ->map(function ($services, $categoryId) {
-                return [
-                    'id' => $categoryId,
-                    'name' => $services->first()->category->name,
-                    'icon' => $services->first()->category->icon,
-                    'description' => $services->first()->category->description,
-                    'category_services_count' => $services->count(),
-                    'services' => $services->map(function ($service) {
-                        return [
-                            'id' => $service->id,
-                            'name' => $service->name,
-                            'icon' => $service->category->icon,
-                            'cover_photo' => $service->cover_photo,
-                        ];
-                    })
-                ];
-            });
+{
+    try {
+        $categories = Category::with(['services' => function($query) {
+            $query->select('id', 'name', 'category_id', 'icon');
+        }])
+        ->select('id', 'name', 'description', 'icon')
+        ->get()
+        ->map(function ($category) {
+            return [
+                'id' => $category->id,
+                'name' => $category->name,
+                'desc' => $category->description,
+                'icon' => $category->icon,
+                'services' => $category->services->map(function ($service) {
+                    return [
+                        'id' => $service->id,
+                        'name' => $service->name,
+                        'icon' => $service->icon
+                    ];
+                })
+            ];
+        });
 
-            return $this->success($categories, 'Categories with services retrieved successfully');
-            
-        } catch (\Exception $e) {
-            return $this->error('Failed to load categories with services: ' . $e->getMessage(), 500);
-        }
+        return $this->success($categories, 'Categories with services retrieved successfully');
+        
+    } catch (\Exception $e) {
+        return $this->error('Failed to load categories with services: ' . $e->getMessage(), 500);
     }
+}
 }
