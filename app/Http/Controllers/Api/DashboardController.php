@@ -144,4 +144,34 @@ class DashboardController extends Controller
     }
 
     // get category and it's services by category id
+    public function getCategoryWithServices(Request $request, $id)
+    {
+        try {
+            $category = Category::with(['services' => function ($query) {
+                $query->select('id', 'name', 'category_id', 'icon');
+            }])
+                ->select('id', 'name', 'description', 'icon')
+                ->findOrFail($id);
+
+            return $this->success($category, 'Category with services retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to load category with services: ' . $e->getMessage(), 500);
+        }
+    }
+
+    // get service by id
+    public function getServiceById(Request $request, $id)
+    {
+        try {
+            $service = Service::with(['category' => function ($query) {
+                $query->select('id', 'name', 'icon', 'description', 'cover_photo');
+            }])
+                ->select('id', 'name', 'category_id', 'icon', 'cover_photo', 'description')
+                ->findOrFail($id);
+
+            return $this->success($service, 'Service retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to load service: ' . $e->getMessage(), 500);
+        }
+    }
 }

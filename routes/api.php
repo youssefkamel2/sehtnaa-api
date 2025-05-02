@@ -160,6 +160,10 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
 Route::prefix('landing')->group(function () {
     Route::get('/', [DashboardController::class, 'landing']);
     Route::get('/categories', [DashboardController::class, 'getCategoriesWithServices']);
+    Route::get('/categories/{id}', [DashboardController::class, 'getCategoryWithServices']);
+    Route::get('/services/{id}', [DashboardController::class, 'getServiceById']);
+
+
 });
 
 
