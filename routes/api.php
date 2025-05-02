@@ -99,11 +99,11 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
     
     // Complaints
     Route::get('/complaints', [AnalyticsController::class, 'complaintAnalytics']);
-    Route::get('/complaints-export', [AnalyticsController::class, 'exportComplaintAnalytics']);
+    Route::get('/complaints-export', [AnalyticsController::class, 'exportComplaintAnalytics'])->name('admin.analytics.complaints.export');
     
     // Requests
     Route::get('/requests', [AnalyticsController::class, 'requestAnalytics']);
-    Route::get('/requests-export', [AnalyticsController::class, 'exportRequestAnalytics']);
+    Route::get('/requests-export', [AnalyticsController::class, 'exportRequestAnalytics'])->na;
     
     });
 });
