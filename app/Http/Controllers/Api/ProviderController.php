@@ -109,7 +109,6 @@ class ProviderController extends Controller
                 'request_id' => $serviceRequest->id,
                 'provider_id' => $provider->id,
                 'provider_name' => $provider->user->first_name ?? 'Provider',
-                'service_name' => $serviceRequest->service->name['en'] ?? $serviceRequest->service->name,
                 'timestamp' => now()->toDateTimeString()
             ];
 
@@ -172,7 +171,6 @@ class ProviderController extends Controller
                 'status' => 'accepted',
                 'provider' => $providerData,
                 'accepted_at' => now()->toDateTimeString(),
-                'service_name' => $serviceRequest->service->name['en'] ?? $serviceRequest->service->name,
                 'expected_time' => $this->calculateExpectedTime($serviceRequest, $provider)
             ];
 
