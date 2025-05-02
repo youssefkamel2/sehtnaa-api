@@ -112,4 +112,39 @@ class DashboardController extends Controller
             return $this->error('Failed to load data: ' . $e->getMessage(), 500);
         }
     }
+
+    // get categories with it's services
+    public function getCategoriesWithServices(Request $request)
+    {
+        try {
+            $categories = Service::with(['category' => function($query) {
+                $query->select('id', 'name', 'icon', 'description');
+            }])
+            ->select('id', 'name', 'category_id')
+            ->get()
+            ->groupBy('category_id')
+            ->map(function ($services, $categoryId) {
+                return [
+                    'id' => $categoryId,
+                    'name' => $services->first()->category->name,
+                    'icon' => $services->first()->category->icon,
+                    'description' => $services->first()->category->description,
+                    'category_services_count' => $services->count(),
+                    'services' => $services->map(function ($service) {
+                        return [
+                            'id' => $service->id,
+                            'name' => $service->name,
+                            'icon' => $service->category->icon,
+                            'cover_photo' => $service->cover_photo,
+                        ];
+                    })
+                ];
+            });
+
+            return $this->success($categories, 'Categories with services retrieved successfully');
+            
+        } catch (\Exception $e) {
+            return $this->error('Failed to load categories with services: ' . $e->getMessage(), 500);
+        }
+    }
 }
