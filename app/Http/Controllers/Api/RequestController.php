@@ -52,8 +52,8 @@ class RequestController extends Controller
             }
 
             // Handle JSON string inputs
-            $serviceIds = json_decode($request->service_ids, true) ?? [];
-            $requirements = json_decode($request->requirements, true) ?? [];
+            $serviceIds = is_array($request->service_ids) ? $request->service_ids : (json_decode($request->service_ids, true) ?? []);
+            $requirements = is_array($request->requirements) ? $request->requirements : (json_decode($request->requirements, true) ?? []);
 
             // Replace the original values with decoded ones
             $request->merge([
