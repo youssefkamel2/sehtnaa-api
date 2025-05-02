@@ -16,7 +16,7 @@ return new class extends Migration
             $table->json('name'); // JSON for multi-language support
             $table->json('description')->nullable(); // JSON for multi-language support
             $table->enum('provider_type', ['individual', 'organizational']);
-            $table->decimal('price', 10, 2);
+            $table->decimal('price', 10, 2)->nullable();
             $table->string('icon')->nullable();
             $table->string('cover_photo')->nullable();
             $table->foreignId('category_id')->constrained('categories')->onDelete('cascade');

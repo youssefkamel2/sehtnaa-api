@@ -61,7 +61,7 @@ class ServiceController extends Controller
             'description.en' => 'required|string',
             'description.ar' => 'required|string',
             'provider_type' => 'required|in:individual,organizational',
-            'price' => 'required|numeric|min:0',
+            'price' => 'nullable|numeric|min:0',            
             'category_id' => 'required|exists:categories,id',
             'icon' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
             'cover_photo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
@@ -175,6 +175,7 @@ class ServiceController extends Controller
             return $this->error('Failed to delete service: ' . $e->getMessage(), 500);
         }
     }
+    
     public function toggleStatus($id)
     {
         try {
