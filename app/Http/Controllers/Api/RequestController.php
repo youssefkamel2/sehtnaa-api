@@ -496,7 +496,7 @@ class RequestController extends Controller
         try {
             $request = ServiceRequest::with([
                 'services:id,name,price,category_id',
-                'services.category:id,is_multiable',
+                'services.category:id,is_multiple',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
                 'feedbacks.user:id,first_name,last_name,profile_image',
