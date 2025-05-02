@@ -171,6 +171,7 @@ class ProviderController extends Controller
                 'status' => 'accepted',
                 'provider' => $providerData,
                 'accepted_at' => now()->toDateTimeString(),
+                'total_price' => $serviceRequest->total_price,
                 'expected_time' => $this->calculateExpectedTime($serviceRequest, $provider)
             ];
 

@@ -496,7 +496,7 @@ class RequestController extends Controller
         try {
             $request = ServiceRequest::with([
                 'services:id,name,price,category_id',
-                'services.category:id,is_multiple',
+                'services.category:id,is_multiple,name',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
                 'feedbacks.user:id,first_name,last_name,profile_image',
@@ -831,10 +831,10 @@ class RequestController extends Controller
                     'price' => $service->pivot->price
                 ];
             }),
-            // category id, and is multiple
             'category' => [
                 'id' => $request->services->first()->category_id,
-                'is_multiple' => $request->services->first()->category->is_multiple
+                'is_multiple' => $request->services->first()->category->is_multiple,
+                'name' => $request->services->first()->category->name,
             ],
             'total_price' => $request->total_price,
             'phone' => $request->phone,
