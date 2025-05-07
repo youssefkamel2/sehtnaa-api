@@ -779,4 +779,215 @@ class ProviderController extends Controller
             return $this->error('Failed to retrieve provider feedbacks: ' . $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Get provider analytics and performance metrics
+     */
+    public function getProviderAnalytics()
+    {
+        try {
+            $user = Auth::user();
+
+            // Verify user is a provider
+            if ($user->user_type !== 'provider') {
+                return $this->error('Only providers can view analytics', 403);
+            }
+
+            // Verify provider exists
+            if (!$user->provider) {
+                return $this->error('Provider profile not found', 404);
+            }
+
+            $provider = $user->provider;
+            $providerId = $provider->id;
+
+            // Time periods for comparison
+            $currentMonth = now()->format('Y-m');
+            $previousMonth = now()->subMonth()->format('Y-m');
+            $currentYear = now()->year;
+            $previousYear = $currentYear - 1;
+
+            // 1. Request Statistics
+            $requestStats = [
+                'total_requests' => ServiceRequest::where('assigned_provider_id', $providerId)->count(),
+                'completed_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->where('status', 'completed')
+                    ->count(),
+                'cancelled_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->where('status', 'cancelled')
+                    ->count(),
+                'current_month_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->whereYear('created_at', $currentYear)
+                    ->whereMonth('created_at', now()->month)
+                    ->count(),
+                'previous_month_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->whereYear('created_at', now()->subMonth()->year)
+                    ->whereMonth('created_at', now()->subMonth()->month)
+                    ->count(),
+            ];
+
+            // 2. Earnings Analysis
+            $earningsStats = [
+                'total_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->where('status', 'completed')
+                    ->sum('total_price'),
+                'current_month_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->where('status', 'completed')
+                    ->whereYear('completed_at', $currentYear)
+                    ->whereMonth('completed_at', now()->month)
+                    ->sum('total_price'),
+                'previous_month_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->where('status', 'completed')
+                    ->whereYear('completed_at', now()->subMonth()->year)
+                    ->whereMonth('completed_at', now()->subMonth()->month)
+                    ->sum('total_price'),
+                'yearly_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->where('status', 'completed')
+                    ->whereYear('completed_at', $currentYear)
+                    ->sum('total_price'),
+            ];
+
+            // 3. Rating and Feedback Analysis
+            $completedRequests = ServiceRequest::where('assigned_provider_id', $providerId)
+                ->where('status', 'completed')
+                ->pluck('id');
+
+            $feedbackStats = [
+                'average_rating' => RequestFeedback::whereIn('request_id', $completedRequests)
+                    ->avg('rating'),
+                'total_feedbacks' => RequestFeedback::whereIn('request_id', $completedRequests)
+                    ->count(),
+                'rating_distribution' => RequestFeedback::whereIn('request_id', $completedRequests)
+                    ->select('rating', DB::raw('count(*) as count'))
+                    ->groupBy('rating')
+                    ->orderBy('rating', 'desc')
+                    ->get()
+                    ->mapWithKeys(function ($item) {
+                        return [$item->rating => $item->count];
+                    }),
+            ];
+
+            // 4. Service Category Breakdown
+            $serviceStats = DB::table('request_services')
+                ->join('service_requests', 'request_services.request_id', '=', 'service_requests.id')
+                ->join('services', 'request_services.service_id', '=', 'services.id')
+                ->join('categories', 'services.category_id', '=', 'categories.id')
+                ->where('service_requests.assigned_provider_id', $providerId)
+                ->where('service_requests.status', 'completed')
+                ->select(
+                    'categories.name as category_name',
+                    DB::raw('count(*) as request_count'),
+                    DB::raw('sum(request_services.price) as total_earnings')
+                )
+                ->groupBy('categories.name')
+                ->orderBy('total_earnings', 'desc')
+                ->get();
+
+            // 5. Monthly Trends (last 6 months)
+            $monthlyTrends = ServiceRequest::where('assigned_provider_id', $providerId)
+                ->where('status', 'completed')
+                ->where('completed_at', '>=', now()->subMonths(6))
+                ->select(
+                    DB::raw("DATE_FORMAT(completed_at, '%Y-%m') as month"),
+                    DB::raw('count(*) as request_count'),
+                    DB::raw('sum(total_price) as total_earnings')
+                )
+                ->groupBy('month')
+                ->orderBy('month')
+                ->get();
+
+            // 6. Performance Metrics
+            $performanceMetrics = [
+                'average_completion_time' => $this->calculateAverageCompletionTime($providerId),
+                'acceptance_rate' => $this->calculateAcceptanceRate($providerId),
+                'cancellation_rate' => $this->calculateCancellationRate($providerId),
+            ];
+
+            // 7. Recent Activity (last 5 requests)
+            $recentActivity = ServiceRequest::with(['services:id,name', 'customer.user:id,first_name,last_name'])
+                ->where('assigned_provider_id', $providerId)
+                ->orderBy('updated_at', 'desc')
+                ->limit(5)
+                ->get()
+                ->map(function ($request) {
+                    return [
+                        'id' => $request->id,
+                        'status' => $request->status,
+                        'services' => $request->services->pluck('name')->implode(', '),
+                        'customer_name' => $request->customer->user->first_name . ' ' . $request->customer->user->last_name,
+                        'updated_at' => $request->updated_at->format('Y-m-d H:i'),
+                        'total_price' => $request->total_price,
+                    ];
+                });
+
+            return $this->success([
+                'request_statistics' => $requestStats,
+                'earnings_analysis' => $earningsStats,
+                'feedback_analysis' => $feedbackStats,
+                'service_breakdown' => $serviceStats,
+                'monthly_trends' => $monthlyTrends,
+                'performance_metrics' => $performanceMetrics,
+                'recent_activity' => $recentActivity,
+            ], 'Provider analytics retrieved successfully');
+        } catch (\Exception $e) {
+            Log::error('ProviderController::getProviderAnalytics - ' . $e->getMessage());
+            return $this->error('Failed to retrieve provider analytics: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Helper method to calculate average completion time in minutes
+     */
+    protected function calculateAverageCompletionTime($providerId)
+    {
+        $completedRequests = ServiceRequest::where('assigned_provider_id', $providerId)
+            ->where('status', 'completed')
+            ->whereNotNull('started_at')
+            ->whereNotNull('completed_at')
+            ->get();
+
+        if ($completedRequests->isEmpty()) {
+            return 0;
+        }
+
+        $totalMinutes = $completedRequests->sum(function ($request) {
+            return $request->started_at->diffInMinutes($request->completed_at);
+        });
+
+        return round($totalMinutes / $completedRequests->count(), 1);
+    }
+
+    /**
+     * Helper method to calculate acceptance rate (percentage)
+     */
+    protected function calculateAcceptanceRate($providerId)
+    {
+        $totalAssigned = ServiceRequest::where('assigned_provider_id', $providerId)->count();
+        $completed = ServiceRequest::where('assigned_provider_id', $providerId)
+            ->where('status', 'completed')
+            ->count();
+
+        if ($totalAssigned === 0) {
+            return 0;
+        }
+
+        return round(($completed / $totalAssigned) * 100, 1);
+    }
+
+    /**
+     * Helper method to calculate cancellation rate (percentage)
+     */
+    protected function calculateCancellationRate($providerId)
+    {
+        $totalAssigned = ServiceRequest::where('assigned_provider_id', $providerId)->count();
+        $cancelled = ServiceRequest::where('assigned_provider_id', $providerId)
+            ->where('status', 'cancelled')
+            ->count();
+
+        if ($totalAssigned === 0) {
+            return 0;
+        }
+
+        return round(($cancelled / $totalAssigned) * 100, 1);
+    }
 }
