@@ -8,6 +8,7 @@ use App\Models\Complaint;
 use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\RequestFeedback;
+use App\Models\RequestProvider;
 use App\Models\ProviderDocument;
 use App\Models\RequiredDocument;
 use App\Services\FirebaseService;
@@ -57,6 +58,10 @@ class ProviderController extends Controller
                 return $this->error('Request not found or already accepted', 404);
             }
 
+            // Get all providers who were notified about this request
+            $notifiedProviders = RequestProvider::where('request_id', $serviceRequest->id)
+                ->pluck('provider_id');
+
             // Update request status and assign provider
             $serviceRequest->update([
                 'status' => 'accepted',
@@ -70,11 +75,13 @@ class ProviderController extends Controller
             // Send real-time update to customer
             $this->sendRequestAcceptedRealTimeUpdate($serviceRequest, $provider);
 
-            // update provider is_avilable to be false
+            // update provider is_available to be false
             $provider->update([
                 'is_available' => false
             ]);
 
+            // Delete the request from all providers' Firestore collections
+            $this->deleteRequestFromProviders($serviceRequest, $notifiedProviders);
 
             DB::commit();
 
@@ -87,6 +94,35 @@ class ProviderController extends Controller
             DB::rollBack();
             Log::error('ProviderController::acceptRequest - ' . $e->getMessage());
             return $this->error('Failed to accept request: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Delete request from all providers' Firestore collections
+     */
+    protected function deleteRequestFromProviders(ServiceRequest $serviceRequest, $providerIds)
+    {
+        try {
+            foreach ($providerIds as $providerId) {
+                $this->firestoreService->deleteDocument(
+                    'provider_requests/' . $providerId . '/notifications',
+                    (string) $serviceRequest->id
+                );
+            }
+
+            Log::channel('firestore')->info('Request deleted from providers Firestore', [
+                'request_id' => $serviceRequest->id,
+                'providers_count' => count($providerIds)
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::channel('firestore_errors')->error('Failed to delete request from providers Firestore', [
+                'request_id' => $serviceRequest->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
         }
     }
 

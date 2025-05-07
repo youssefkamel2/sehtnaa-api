@@ -121,4 +121,46 @@ class FirestoreService
             throw $e;
         }
     }
+
+    public function deleteDocument($collection, $documentId)
+{
+    $url = "https://firestore.googleapis.com/v1/projects/{$this->projectId}/databases/(default)/documents/{$collection}/{$documentId}";
+
+    try {
+        $response = $this->client->delete($url, [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $this->accessToken,
+                'Content-Type' => 'application/json',
+            ],
+            'http_errors' => false
+        ]);
+
+        if ($response->getStatusCode() >= 400) {
+            $responseData = json_decode($response->getBody(), true);
+            $errorMsg = $responseData['error']['message'] ?? 'Unknown Firestore error';
+            Log::channel('firestore')->error('Firestore delete document error', [
+                'status' => $response->getStatusCode(),
+                'error' => $errorMsg,
+                'collection' => $collection,
+                'document_id' => $documentId,
+            ]);
+            throw new \Exception($errorMsg);
+        }
+
+        Log::channel('firestore')->debug('Firestore document deleted', [
+            'collection' => $collection,
+            'document_id' => $documentId,
+        ]);
+
+        return true;
+    } catch (\Exception $e) {
+        Log::channel('firestore')->error('Firestore delete document failed', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'collection' => $collection,
+            'document_id' => $documentId,
+        ]);
+        throw $e;
+    }
+}
 }
