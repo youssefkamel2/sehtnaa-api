@@ -36,6 +36,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::post('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
     Route::post('/accept/{requestId}', [ProviderController::class, 'acceptRequest'])->middleware(['auth:api']);
     Route::get('/feedbacks', [ProviderController::class, 'getProviderFeedbacks'])->middleware(['auth:api']);
+    Route::get('/complaints', [ProviderController::class, 'getProviderComplaints'])->middleware(['auth:api']);
     Route::get('/analytics', [ProviderController::class, 'getProviderAnalytics'])->middleware(['auth:api']);
 });
 

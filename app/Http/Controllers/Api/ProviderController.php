@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\User;
 use App\Models\Provider;
+use App\Models\Complaint;
 use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\RequestFeedback;
@@ -777,6 +778,80 @@ class ProviderController extends Controller
             ], 'Provider feedbacks retrieved successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to retrieve provider feedbacks: ' . $e->getMessage(), 500);
+        }
+    }
+
+    // get provider complaints
+    public function getProviderComplaints()
+    {
+        try {
+            $user = Auth::user();
+
+            // Verify user is a provider
+            if ($user->user_type !== 'provider') {
+                return $this->error('Only providers can view complaints', 403);
+            }
+
+            // Verify provider exists
+            if (!$user->provider) {
+                return $this->error('Provider profile not found', 404);
+            }
+
+            $provider = $user->provider;
+
+            // Get all complaints submitted by this provider with request details
+            $complaints = Complaint::with([
+                'request.services:id,name',
+                'request.customer.user:id,first_name,last_name,profile_image'
+            ])
+                ->where('user_id', $user->id)
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($complaint) {
+                    return [
+                        'id' => $complaint->id,
+                        'subject' => $complaint->subject,
+                        'description' => $complaint->description,
+                        'status' => $complaint->status,
+                        'response' => $complaint->response,
+                        'created_at' => $complaint->created_at->format('Y-m-d H:i:s'),
+                        'updated_at' => $complaint->updated_at->format('Y-m-d H:i:s'),
+                        'request' => [
+                            'id' => $complaint->request->id,
+                            'services' => $complaint->request->services->map(function ($service) {
+                                return [
+                                    'id' => $service->id,
+                                    'name' => $service->name
+                                ];
+                            }),
+                            'total_price' => $complaint->request->total_price,
+                            'status' => $complaint->request->status,
+                            'created_at' => $complaint->request->created_at->format('Y-m-d H:i:s')
+                        ],
+                        'customer' => $complaint->request->customer ? [
+                            'id' => $complaint->request->customer->id,
+                            'name' => $complaint->request->customer->user->first_name . ' ' .
+                                $complaint->request->customer->user->last_name,
+                            'profile_image' => $complaint->request->customer->user->profile_image
+                        ] : null
+                    ];
+                });
+
+            // Add complaint statistics
+            $stats = [
+                'total_complaints' => $complaints->count(),
+                'open_complaints' => $complaints->where('status', 'open')->count(),
+                'resolved_complaints' => $complaints->where('status', 'resolved')->count(),
+                'rejected_complaints' => $complaints->where('status', 'rejected')->count(),
+            ];
+
+            return $this->success([
+                'statistics' => $stats,
+                'complaints' => $complaints
+            ], 'Provider complaints retrieved successfully');
+        } catch (\Exception $e) {
+            Log::error('ProviderController::getProviderComplaints - ' . $e->getMessage());
+            return $this->error('Failed to retrieve provider complaints: ' . $e->getMessage(), 500);
         }
     }
 
