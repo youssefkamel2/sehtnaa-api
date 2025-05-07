@@ -6,18 +6,17 @@ use App\Models\User;
 use App\Models\Provider;
 use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
-use App\Models\RequestFeedback;
 use App\Models\ProviderDocument;
 use App\Models\RequiredDocument;
-use App\Services\FirebaseService;
-use App\Services\FirestoreService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
-use App\Models\Request as ServiceRequest;
 use Illuminate\Support\Facades\Validator;
+use App\Models\Request as ServiceRequest;
+use Illuminate\Support\Facades\Auth;
+use App\Services\FirestoreService;
+use App\Services\FirebaseService;
 
 class ProviderController extends Controller
 {
@@ -233,6 +232,10 @@ class ProviderController extends Controller
         return round($earthRadius * $c, 2);
     }
 
+
+
+
+    
     public function getAllProviders(Request $request)
     {
         try {
@@ -708,75 +711,5 @@ class ProviderController extends Controller
         if ($hasPending || !$allUploaded) return 'pending';
         if ($approvedCount === $totalRequired) return 'approved';
         return 'pending';
-    }
-
-    // get provider feedbacks
-
-    public function getProviderFeedbacks(Request $request)
-    {
-        try {
-            $user = Auth::user();
-
-            // Verify user is a provider
-            if ($user->user_type !== 'provider') {
-                return $this->error('Only providers can view feedbacks', 403);
-            }
-
-            // Verify provider exists
-            if (!$user->provider) {
-                return $this->error('Provider profile not found', 404);
-            }
-
-            $provider = $user->provider;
-
-            // Get all completed requests assigned to this provider
-            $completedRequests = ServiceRequest::where('assigned_provider_id', $provider->id)
-                ->where('status', 'completed')
-                ->pluck('id');
-
-            // Get all feedbacks for these requests with request and customer details
-            $feedbacks = RequestFeedback::with([
-                'request.services:id,name',
-                'user:id,first_name,last_name,profile_image'
-            ])
-                ->whereIn('request_id', $completedRequests)
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($feedback) {
-                    return [
-                        'id' => $feedback->id,
-                        'rating' => $feedback->rating,
-                        'comment' => $feedback->comment,
-                        'created_at' => $feedback->created_at,
-                        'customer' => [
-                            'name' => $feedback->user->first_name . ' ' . $feedback->user->last_name,
-                            'profile_image' => $feedback->user->profile_image
-                        ],
-                        'request' => [
-                            'id' => $feedback->request->id,
-                            'services' => $feedback->request->services->map(function ($service) {
-                                return [
-                                    'id' => $service->id,
-                                    'name' => $service->name
-                                ];
-                            }),
-                            'total_price' => $feedback->request->total_price,
-                            'completed_at' => $feedback->request->completed_at
-                        ]
-                    ];
-                });
-
-            // Calculate average rating
-            $averageRating = $feedbacks->avg('rating');
-            $totalFeedbacks = $feedbacks->count();
-
-            return $this->success([
-                'average_rating' => round($averageRating, 1),
-                'total_feedbacks' => $totalFeedbacks,
-                'feedbacks' => $feedbacks
-            ], 'Provider feedbacks retrieved successfully');
-        } catch (\Exception $e) {
-            return $this->error('Failed to retrieve provider feedbacks: ' . $e->getMessage(), 500);
-        }
     }
 }
