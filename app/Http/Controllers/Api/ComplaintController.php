@@ -107,4 +107,5 @@ class ComplaintController extends Controller
             return $this->error('Failed to update complaint status: ' . $e->getMessage(), 500);
         }
     }
+    
 }
