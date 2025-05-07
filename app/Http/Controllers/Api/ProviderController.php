@@ -822,19 +822,19 @@ class ProviderController extends Controller
     {
         try {
             $user = Auth::user();
-
+    
             // Verify user is a provider
             if ($user->user_type !== 'provider') {
                 return $this->error('Only providers can view complaints', 403);
             }
-
+    
             // Verify provider exists
             if (!$user->provider) {
                 return $this->error('Provider profile not found', 404);
             }
-
+    
             $provider = $user->provider;
-
+    
             // Get all complaints submitted by this provider with request details
             $complaints = Complaint::with([
                 'request.services:id,name',
@@ -844,14 +844,19 @@ class ProviderController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($complaint) {
+                    // Add null checks for dates
+                    $createdAt = $complaint->created_at ? $complaint->created_at->format('Y-m-d H:i:s') : null;
+                    $updatedAt = $complaint->updated_at ? $complaint->updated_at->format('Y-m-d H:i:s') : null;
+                    $requestCreatedAt = $complaint->request->created_at ? $complaint->request->created_at->format('Y-m-d H:i:s') : null;
+    
                     return [
                         'id' => $complaint->id,
                         'subject' => $complaint->subject,
                         'description' => $complaint->description,
                         'status' => $complaint->status,
                         'response' => $complaint->response,
-                        'created_at' => $complaint->created_at->format('Y-m-d H:i:s'),
-                        'updated_at' => $complaint->updated_at->format('Y-m-d H:i:s'),
+                        'created_at' => $createdAt,
+                        'updated_at' => $updatedAt,
                         'request' => [
                             'id' => $complaint->request->id,
                             'services' => $complaint->request->services->map(function ($service) {
@@ -862,7 +867,7 @@ class ProviderController extends Controller
                             }),
                             'total_price' => $complaint->request->total_price,
                             'status' => $complaint->request->status,
-                            'created_at' => $complaint->request->created_at->format('Y-m-d H:i:s')
+                            'created_at' => $requestCreatedAt
                         ],
                         'customer' => $complaint->request->customer ? [
                             'id' => $complaint->request->customer->id,
@@ -872,7 +877,10 @@ class ProviderController extends Controller
                         ] : null
                     ];
                 });
-
+    
+            // Filter out any null complaints (where request might be null)
+            $complaints = $complaints->filter();
+    
             // Add complaint statistics
             $stats = [
                 'total_complaints' => $complaints->count(),
@@ -880,10 +888,10 @@ class ProviderController extends Controller
                 'resolved_complaints' => $complaints->where('status', 'resolved')->count(),
                 'rejected_complaints' => $complaints->where('status', 'rejected')->count(),
             ];
-
+    
             return $this->success([
                 'statistics' => $stats,
-                'complaints' => $complaints
+                'complaints' => $complaints->values() // Reset keys after filter
             ], 'Provider complaints retrieved successfully');
         } catch (\Exception $e) {
             Log::error('ProviderController::getProviderComplaints - ' . $e->getMessage());
