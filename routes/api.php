@@ -1,4 +1,4 @@
-<?php
+f<?php
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +35,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::post('/document-status', [ProviderController::class, 'documentStatus']);
     Route::post('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
     Route::post('/accept/{requestId}', [ProviderController::class, 'acceptRequest'])->middleware(['auth:api']);
+    Route::get('/feedbacks}', [ProviderController::class, 'getProviderFeedbacks'])->middleware(['auth:api']);
 });
 
 Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->group(function () {
