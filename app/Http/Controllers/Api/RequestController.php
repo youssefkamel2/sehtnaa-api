@@ -642,54 +642,60 @@ class RequestController extends Controller
         }
     }
 
+    
     public function createComplaint(Request $request, $id)
-    {
-        try {
-            $user = Auth::user();
+{
+    try {
+        $user = Auth::user();
 
-            // Verify user is a customer
-            if ($user->user_type !== 'customer') {
-                return $this->error('Only customers can submit complaints', 403);
-            }
-
-            // Verify customer exists
-            if (!$user->customer) {
-                return $this->error('Customer profile not found', 404);
-            }
-
-            $serviceRequest = ServiceRequest::with(['customer'])->find($id);
-            if (!$serviceRequest) {
-                return $this->error('Request not found', 404);
-            }
-
-            // Verify requesting customer owns the request
-            if ($serviceRequest->customer_id !== $user->customer->id) {
-                return $this->error('You can only submit complaints for your own requests', 403);
-            }
-
-            $validator = Validator::make($request->all(), [
-                'subject' => 'required|string|max:255',
-                'description' => 'required|string|max:2000',
-            ]);
-
-            if ($validator->fails()) {
-                return $this->error($validator->errors()->first(), 422);
-            }
-
-            $complaint = new Complaint([
-                'user_id' => $user->id,
-                'subject' => $request->subject,
-                'description' => $request->description,
-                'status' => 'open',
-            ]);
-
-            $serviceRequest->complaints()->save($complaint);
-
-            return $this->success(null, 'Complaint submitted successfully');
-        } catch (\Exception $e) {
-            return $this->error('Failed to submit complaint: ' . $e->getMessage(), 500);
+        // Verify user is either a customer or provider
+        if (!in_array($user->user_type, ['customer', 'provider'])) {
+            return $this->error('Only customers or providers can submit complaints', 403);
         }
+
+        // Verify user profile exists
+        if (($user->user_type === 'customer' && !$user->customer) || 
+            ($user->user_type === 'provider' && !$user->provider)) {
+            return $this->error('User profile not found', 404);
+        }
+
+        $serviceRequest = ServiceRequest::with(['customer', 'assignedProvider'])->find($id);
+        if (!$serviceRequest) {
+            return $this->error('Request not found', 404);
+        }
+
+        // Verify user is associated with the request
+        if ($user->user_type === 'customer' && $serviceRequest->customer_id !== $user->customer->id) {
+            return $this->error('You can only submit complaints for your own requests', 403);
+        }
+
+        if ($user->user_type === 'provider' && $serviceRequest->assigned_provider_id !== $user->provider->id) {
+            return $this->error('You can only submit complaints for requests assigned to you', 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'subject' => 'required|string|max:255',
+            'description' => 'required|string|max:2000',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        $complaint = new Complaint([
+            'user_id' => $user->id,
+            'subject' => $request->subject,
+            'description' => $request->description,
+            'status' => 'open',
+        ]);
+
+        $serviceRequest->complaints()->save($complaint);
+
+        return $this->success(null, 'Complaint submitted successfully');
+    } catch (\Exception $e) {
+        return $this->error('Failed to submit complaint: ' . $e->getMessage(), 500);
     }
+}
 
     public function cancelRequest(Request $request, $id)
     {

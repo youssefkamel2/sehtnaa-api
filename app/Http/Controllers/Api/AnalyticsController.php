@@ -532,7 +532,6 @@ class AnalyticsController extends Controller
         ], 'Export ready for download');
     }
 
-
     public function requestAnalytics(Request $request)
     {
         $validator = Validator::make($request->all(), [
