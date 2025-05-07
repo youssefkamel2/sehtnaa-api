@@ -755,6 +755,96 @@ class RequestController extends Controller
         }
     }
 
+    // function to get the ongoing requests of a customer [status is accepted or pending]
+    public function getOngoingRequests() {
+        try {
+            $user = Auth::user();
+    
+            if (!in_array($user->user_type, ['customer', 'provider'])) {
+                return $this->error('Only customers or providers can view requests', 403);
+            }
+    
+            if ($user->user_type === 'customer' && !$user->customer) {
+                return $this->error('Customer profile not found', 404);
+            }
+    
+            if ($user->user_type === 'provider' && !$user->provider) {
+                return $this->error('Provider profile not found', 404);
+            }
+    
+            $requests = ServiceRequest::with([
+                'services:id,name',
+                'requirements.serviceRequirement:id,name,type',
+                'assignedProvider.user:id,first_name,last_name,profile_image',
+                'customer.user:id,first_name,last_name,profile_image'
+            ])
+                ->when($user->user_type === 'customer', function ($query) use ($user) {
+                    return $query->where('customer_id', $user->customer->id);
+                })
+                ->when($user->user_type === 'provider', function ($query) use ($user) {
+                    return $query->where('assigned_provider_id', $user->provider->id);
+                })
+                ->whereIn('status', ['pending', 'accepted'])
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($request) use ($user) {
+                    $baseData = [
+                        'id' => $request->id,
+                        'services' => $request->services->map(function ($service) {
+                            return [
+                                'id' => $service->id,
+                                'name' => $service->name,
+                                'price' => $service->pivot->price
+                            ];
+                        }),
+                        'total_price' => $request->total_price,
+                        'status' => $request->status,
+                        'created_at' => $request->created_at->format('Y-m-d H:i:s'),
+                        'updated_at' => $request->updated_at->format('Y-m-d H:i:s'),
+                        'location' => [
+                            'latitude' => $request->latitude,
+                            'longitude' => $request->longitude
+                        ],
+                        'requirements' => $request->requirements->map(function ($requirement) {
+                            return [
+                                'id' => $requirement->id,
+                                'name' => $requirement->serviceRequirement->name ?? 'Unknown',
+                                'type' => $requirement->serviceRequirement->type ?? 'input',
+                                'value' => $requirement->value,
+                                'file_url' => $requirement->file_path ? asset('storage/' . $requirement->file_path) : null
+                            ];
+                        })
+                    ];
+    
+                    // Add provider data for customer requests
+                    if ($user->user_type === 'customer') {
+                        $baseData['provider'] = $request->assignedProvider ? [
+                            'id' => $request->assignedProvider->id,
+                            'name' => $request->assignedProvider->user->first_name . ' ' . $request->assignedProvider->user->last_name,
+                            'image' => $request->assignedProvider->user->profile_image ? $request->assignedProvider->user->profile_image : null
+                        ] : null;
+                    }
+    
+                    // Add customer data for provider requests
+                    if ($user->user_type === 'provider') {
+                        $baseData['customer'] = $request->customer ? [
+                            'id' => $request->customer->id,
+                            'name' => $request->customer->user->first_name . ' ' . $request->customer->user->last_name,
+                            'image' => $request->customer->user->profile_image ? $request->customer->user->profile_image : null,
+                            'phone' => $request->phone,
+                            'additional_info' => $request->additional_info
+                        ] : null;
+                    }
+    
+                    return $baseData;
+                });
+    
+            return $this->success($requests, 'Ongoing requests retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to retrieve ongoing requests: ' . $e->getMessage(), 500);
+        }
+    }
+
     protected function handleCancellationNotifications(ServiceRequest $serviceRequest, $user)
     {
         $isCustomer = $user->user_type === 'customer';
