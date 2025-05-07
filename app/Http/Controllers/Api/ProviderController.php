@@ -867,21 +867,6 @@ class ProviderController extends Controller
                     }),
             ];
 
-            // 4. Service Category Breakdown
-            $serviceStats = DB::table('request_services')
-                ->join('service_requests', 'request_services.request_id', '=', 'service_requests.id')
-                ->join('services', 'request_services.service_id', '=', 'services.id')
-                ->join('categories', 'services.category_id', '=', 'categories.id')
-                ->where('service_requests.assigned_provider_id', $providerId)
-                ->where('service_requests.status', 'completed')
-                ->select(
-                    'categories.name as category_name',
-                    DB::raw('count(*) as request_count'),
-                    DB::raw('sum(request_services.price) as total_earnings')
-                )
-                ->groupBy('categories.name')
-                ->orderBy('total_earnings', 'desc')
-                ->get();
 
             // 5. Monthly Trends (last 6 months)
             $monthlyTrends = ServiceRequest::where('assigned_provider_id', $providerId)
@@ -903,31 +888,12 @@ class ProviderController extends Controller
                 'cancellation_rate' => $this->calculateCancellationRate($providerId),
             ];
 
-            // 7. Recent Activity (last 5 requests)
-            $recentActivity = ServiceRequest::with(['services:id,name', 'customer.user:id,first_name,last_name'])
-                ->where('assigned_provider_id', $providerId)
-                ->orderBy('updated_at', 'desc')
-                ->limit(5)
-                ->get()
-                ->map(function ($request) {
-                    return [
-                        'id' => $request->id,
-                        'status' => $request->status,
-                        'services' => $request->services->pluck('name')->implode(', '),
-                        'customer_name' => $request->customer->user->first_name . ' ' . $request->customer->user->last_name,
-                        'updated_at' => $request->updated_at->format('Y-m-d H:i'),
-                        'total_price' => $request->total_price,
-                    ];
-                });
-
             return $this->success([
                 'request_statistics' => $requestStats,
                 'earnings_analysis' => $earningsStats,
                 'feedback_analysis' => $feedbackStats,
-                'service_breakdown' => $serviceStats,
                 'monthly_trends' => $monthlyTrends,
                 'performance_metrics' => $performanceMetrics,
-                'recent_activity' => $recentActivity,
             ], 'Provider analytics retrieved successfully');
         } catch (\Exception $e) {
             Log::error('ProviderController::getProviderAnalytics - ' . $e->getMessage());
