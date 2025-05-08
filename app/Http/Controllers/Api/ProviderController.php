@@ -270,6 +270,62 @@ class ProviderController extends Controller
         return round($earthRadius * $c, 2);
     }
 
+    // function to set provider availability
+public function setAvailability(Request $request)
+{
+    try {
+
+        $user = $request->user();
+
+        // Verify user is a provider
+        if ($user->user_type !== 'provider') {
+            return $this->error('Only providers can set availability', 403);
+        }
+
+        // Verify provider exists
+        if (!$user->provider) {
+            return $this->error('Provider profile not found', 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'is_available' => 'required|boolean',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180'
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        DB::beginTransaction();
+
+        // Update provider location
+        $user->update([
+            'latitude' => $request->latitude,
+            'longitude' => $request->longitude
+        ]);
+
+
+        // Update provider availability
+        $user->provider->update([
+            'is_available' => $request->is_available
+        ]);
+
+        DB::commit();
+
+        return $this->success([
+            'is_available' => (bool)$user->provider->is_available,
+            'latitude' => $user->latitude,
+            'longitude' => $user->longitude
+        ], 'Provider availability updated successfully');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('ProviderController::setAvailability - ' . $e->getMessage());
+        return $this->error('Failed to update provider availability: ' . $e->getMessage(), 500);
+    }
+}
+
     public function getAllProviders(Request $request)
     {
         try {
