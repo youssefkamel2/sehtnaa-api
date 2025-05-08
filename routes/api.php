@@ -38,7 +38,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::get('/feedbacks', [ProviderController::class, 'getProviderFeedbacks'])->middleware(['auth:api']);
     Route::get('/complaints', [ProviderController::class, 'getProviderComplaints'])->middleware(['auth:api']);
     Route::get('/analytics', [ProviderController::class, 'getProviderAnalytics'])->middleware(['auth:api']);
-    Route::get('/availability', [ProviderController::class, 'setAvailability'])->middleware(['auth:api']);
+    Route::post('/availability', [ProviderController::class, 'setAvailability'])->middleware(['auth:api']);
 });
 
 Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->group(function () {
