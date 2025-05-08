@@ -463,35 +463,96 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-
-            $customerId = $user->user_type === 'customer' ? $user->customer->id : null;
-            $providerId = $user->user_type === 'provider' ? $user->provider->id : null;
-
+    
+            if (!in_array($user->user_type, ['customer', 'provider'])) {
+                return $this->error('Unauthorized access', 403);
+            }
+    
+            if ($user->user_type === 'customer' && !$user->customer) {
+                return $this->error('Customer profile not found', 404);
+            }
+    
+            if ($user->user_type === 'provider' && !$user->provider) {
+                return $this->error('Provider profile not found', 404);
+            }
+    
             $requests = ServiceRequest::with([
                 'services:id,name,price,category_id',
                 'services.category:id,is_multiple,name',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
+                'customer.user:id,first_name,last_name,phone,profile_image', // Added customer relationship
                 'feedbacks',
                 'cancellations'
             ])
-                ->when($user->user_type === 'customer', function ($query) use ($customerId) {
-                    return $query->where('customer_id', $customerId);
+                ->when($user->user_type === 'customer', function ($query) use ($user) {
+                    return $query->where('customer_id', $user->customer->id);
                 })
-                ->when($user->user_type === 'provider', function ($query) use ($providerId) {
-                    return $query->where('assigned_provider_id', $providerId);
+                ->when($user->user_type === 'provider', function ($query) use ($user) {
+                    return $query->where('assigned_provider_id', $user->provider->id);
                 })
                 ->orderBy('created_at', 'desc')
                 ->get()
-                ->map(function ($request) {
-                    return $this->formatRequest($request);
+                ->map(function ($request) use ($user) {
+                    $baseData = [
+                        'id' => $request->id,
+                        'services' => $request->services->map(function ($service) {
+                            return [
+                                'id' => $service->id,
+                                'name' => $service->name,
+                                'price' => $service->price,
+                                'category' => [
+                                    'id' => $service->category->id,
+                                    'name' => $service->category->name,
+                                    'is_multiple' => $service->category->is_multiple
+                                ]
+                            ];
+                        }),
+                        'total_price' => $request->total_price,
+                        'status' => $request->status,
+                        'created_at' => $request->created_at,
+                        'additional_info' => $request->additional_info,
+                        'location' => [
+                            'latitude' => $request->latitude,
+                            'longitude' => $request->longitude
+                        ],
+                        'feedbacks' => $request->feedbacks,
+                        'cancellations' => $request->cancellations
+                    ];
+    
+                    // Add provider data for customers
+                    if ($user->user_type === 'customer' && $request->assignedProvider) {
+                        $baseData['provider'] = [
+                            'id' => $request->assignedProvider->id,
+                            'name' => $request->assignedProvider->user->first_name . ' ' . $request->assignedProvider->user->last_name,
+                            'phone' => $request->assignedProvider->user->phone,
+                            'profile_image' => $request->assignedProvider->user->profile_image,
+                            'provider_type' => $request->assignedProvider->provider_type,
+                            'rating' => $request->assignedProvider->average_rating ?? 0
+                        ];
+                    }
+    
+                    // Add customer data for providers
+                    if ($user->user_type === 'provider' && $request->customer) {
+                        $baseData['customer'] = [
+                            'id' => $request->customer->id,
+                            'name' => $request->customer->user->first_name . ' ' . $request->customer->user->last_name,
+                            'phone' => $request->customer->user->phone,
+                            'profile_image' => $request->customer->user->profile_image,
+                            'gender' => $request->gender,
+                            'age' => $request->age
+                        ];
+                    }
+    
+                    return $baseData;
                 });
-
+    
             return $this->success($requests, 'Requests fetched successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to fetch requests: ' . $e->getMessage(), 500);
         }
     }
+
     public function getRequestDetails($id)
     {
         try {
