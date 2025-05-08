@@ -8,6 +8,7 @@ use App\Models\Complaint;
 use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\RequestFeedback;
+use App\Models\RequestProvider;
 use Illuminate\Validation\Rule;
 use App\Services\FirebaseService;
 use App\Models\RequestRequirement;
@@ -499,6 +500,7 @@ class RequestController extends Controller
                 'services.category:id,is_multiple,name',
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
+                'customer.user:id,first_name,last_name,phone,profile_image', // Added customer relationship
                 'feedbacks.user:id,first_name,last_name,profile_image',
                 'cancellations',
                 'complaints.user:id,first_name,last_name,profile_image'
@@ -510,15 +512,23 @@ class RequestController extends Controller
 
             $user = Auth::user();
 
+            // Authorization checks
             if ($user->user_type === 'customer' && (!$user->customer || $request->customer_id !== $user->customer->id)) {
                 return $this->error('Unauthorized', 403);
             }
 
-            if ($user->user_type === 'provider' && (!$user->provider || $request->assigned_provider_id !== $user->provider->id)) {
+            if ($user->user_type === 'provider' && (!$user->provider ||
+                ($request->assigned_provider_id !== $user->provider->id &&
+                    !RequestProvider::where('request_id', $id)
+                        ->where('provider_id', $user->provider->id)
+                        ->exists()))) {
                 return $this->error('Unauthorized', 403);
             }
 
-            return $this->success($this->formatRequestDetails($request), 'Request details fetched successfully');
+            // Format the response based on who's viewing
+            $formattedData = $this->formatRequestDetails($request, $user->user_type);
+
+            return $this->success($formattedData, 'Request details fetched successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to fetch request details: ' . $e->getMessage(), 500);
         }
@@ -756,22 +766,23 @@ class RequestController extends Controller
     }
 
     // function to get the ongoing requests of a customer [status is accepted or pending]
-    public function getOngoingRequests() {
+    public function getOngoingRequests()
+    {
         try {
             $user = Auth::user();
-    
+
             if (!in_array($user->user_type, ['customer', 'provider'])) {
                 return $this->error('Only customers or providers can view requests', 403);
             }
-    
+
             if ($user->user_type === 'customer' && !$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-    
+
             if ($user->user_type === 'provider' && !$user->provider) {
                 return $this->error('Provider profile not found', 404);
             }
-    
+
             $requests = ServiceRequest::with([
                 'services:id,name',
                 'requirements.serviceRequirement:id,name,type',
@@ -815,7 +826,7 @@ class RequestController extends Controller
                             ];
                         })
                     ];
-    
+
                     // Add provider data for customer requests
                     if ($user->user_type === 'customer') {
                         $baseData['provider'] = $request->assignedProvider ? [
@@ -824,7 +835,7 @@ class RequestController extends Controller
                             'image' => $request->assignedProvider->user->profile_image ? $request->assignedProvider->user->profile_image : null
                         ] : null;
                     }
-    
+
                     // Add customer data for provider requests
                     if ($user->user_type === 'provider') {
                         $baseData['customer'] = $request->customer ? [
@@ -835,10 +846,10 @@ class RequestController extends Controller
                             'additional_info' => $request->additional_info
                         ] : null;
                     }
-    
+
                     return $baseData;
                 });
-    
+
             return $this->success($requests, 'Ongoing requests retrieved successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to retrieve ongoing requests: ' . $e->getMessage(), 500);
@@ -946,58 +957,82 @@ class RequestController extends Controller
         ];
     }
 
-    private function formatRequestDetails(ServiceRequest $request): array
+    protected function formatRequestDetails(ServiceRequest $request, $userType)
     {
-        $formatted = $this->formatRequest($request);
-
-        $formatted['additional_info'] = $request->additional_info;
-        $formatted['latitude'] = $request->latitude;
-        $formatted['longitude'] = $request->longitude;
-        $formatted['gender'] = $request->gender;
-        $formatted['name'] = $request->name;
-        $formatted['age'] = $request->age;
-        $formatted['scheduled_at'] = $request->scheduled_at;
-        $formatted['started_at'] = $request->started_at;
-        $formatted['completed_at'] = $request->completed_at;
-        $formatted['created_at'] = $request->created_at;
-
-        $formatted['feedbacks'] = $request->feedbacks->map(function ($feedback) {
-            return [
-                'id' => $feedback->id,
-                'rating' => $feedback->rating,
-                'comment' => $feedback->comment,
-                'created_at' => $feedback->created_at,
-                'user' => [
-                    'name' => $feedback->user->first_name . ' ' . $feedback->user->last_name,
-                    'profile_image' => $feedback->user->profile_image,
-                ]
+        $baseData = [
+            'id' => $request->id,
+            'services' => $request->services->map(function ($service) {
+                return [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'price' => $service->price,
+                    'category' => [
+                        'id' => $service->category->id,
+                        'name' => $service->category->name,
+                        'is_multiple' => $service->category->is_multiple
+                    ]
+                ];
+            }),
+            'total_price' => $request->total_price,
+            'status' => $request->status,
+            'created_at' => $request->created_at,
+            'additional_info' => $request->additional_info,
+            'location' => [
+                'latitude' => $request->latitude,
+                'longitude' => $request->longitude
+            ],
+            'feedbacks' => $request->feedbacks->map(function ($feedback) {
+                return [
+                    'id' => $feedback->id,
+                    'rating' => $feedback->rating,
+                    'comment' => $feedback->comment,
+                    'created_at' => $feedback->created_at,
+                    'user' => [
+                        'name' => $feedback->user->first_name . ' ' . $feedback->user->last_name,
+                        'profile_image' => $feedback->user->profile_image,
+                    ]
+                ];
+            }),
+            'cancellations' => $request->cancellations,
+            'complaints' => $request->complaints->map(function ($complaint) {
+                return [
+                    'id' => $complaint->id,
+                    'subject' => $complaint->subject,
+                    'description' => $complaint->description,
+                    'status' => $complaint->status,
+                    'created_at' => $complaint->created_at,
+                    'user' => [
+                        'name' => $complaint->user->first_name . ' ' . $complaint->user->last_name,
+                        'profile_image' => $complaint->user->profile_image,
+                    ]
+                ];
+            })
+        ];
+    
+        // Add provider data for customers
+        if ($userType === 'customer' && $request->assignedProvider) {
+            $baseData['provider'] = [
+                'id' => $request->assignedProvider->id,
+                'name' => $request->assignedProvider->user->first_name . ' ' . $request->assignedProvider->user->last_name,
+                'phone' => $request->assignedProvider->user->phone,
+                'profile_image' => $request->assignedProvider->user->profile_image,
+                'provider_type' => $request->assignedProvider->provider_type,
+                'rating' => $request->assignedProvider->average_rating ?? 0
             ];
-        });
-
-        $formatted['cancellations'] = $request->cancellations->map(function ($cancellation) {
-            return [
-                'id' => $cancellation->id,
-                'cancelled_by' => $cancellation->cancelled_by,
-                'reason' => $cancellation->reason,
-                'is_after_acceptance' => $cancellation->is_after_acceptance,
-                'cancelled_at' => $cancellation->cancelled_at,
+        }
+    
+        // Add customer data for providers
+        if ($userType === 'provider' && $request->customer) {
+            $baseData['customer'] = [
+                'id' => $request->customer->id,
+                'name' => $request->customer->user->first_name . ' ' . $request->customer->user->last_name,
+                'phone' => $request->customer->user->phone,
+                'profile_image' => $request->customer->user->profile_image,
+                'gender' => $request->gender,
+                'age' => $request->age
             ];
-        });
-
-        $formatted['complaints'] = $request->complaints->map(function ($complaint) {
-            return [
-                'id' => $complaint->id,
-                'subject' => $complaint->subject,
-                'description' => $complaint->description,
-                'status' => $complaint->status,
-                'created_at' => $complaint->created_at,
-                'user' => [
-                    'name' => $complaint->user->first_name . ' ' . $complaint->user->last_name,
-                    'profile_image' => $complaint->user->profile_image,
-                ]
-            ];
-        });
-
-        return $formatted;
+        }
+    
+        return $baseData;
     }
 }
