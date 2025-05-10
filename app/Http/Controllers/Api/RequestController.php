@@ -554,47 +554,55 @@ class RequestController extends Controller
     }
 
     public function getRequestDetails($id)
-    {
-        try {
-            $request = ServiceRequest::with([
-                'services:id,name,price,category_id',
-                'services.category:id,is_multiple,name',
-                'assignedProvider.user:id,first_name,last_name,phone,profile_image',
-                'assignedProvider:id,provider_type,user_id',
-                'customer.user:id,first_name,last_name,phone,profile_image', // Added customer relationship
-                'feedbacks.user:id,first_name,last_name,profile_image',
-                'cancellations',
-                'complaints.user:id,first_name,last_name,profile_image'
-            ])->find($id);
+{
+    try {
+        $request = ServiceRequest::with([
+            'services:id,name,price,category_id',
+            'services.category:id,is_multiple,name',
+            'assignedProvider.user:id,first_name,last_name,phone,profile_image',
+            'assignedProvider:id,provider_type,user_id',
+            'customer.user:id,first_name,last_name,phone,profile_image', // Added customer relationship
+            'feedbacks.user:id,first_name,last_name,profile_image',
+            'cancellations',
+            'complaints.user:id,first_name,last_name,profile_image'
+        ])->find($id);
 
-            if (!$request) {
-                return $this->error('Request not found', 404);
-            }
-
-            $user = Auth::user();
-
-            // Authorization checks
-            if ($user->user_type === 'customer' && (!$user->customer || $request->customer_id !== $user->customer->id)) {
-                return $this->error('Unauthorized', 403);
-            }
-
-            if ($user->user_type === 'provider' && (!$user->provider ||
-                ($request->assigned_provider_id !== $user->provider->id &&
-                    !RequestProvider::where('request_id', $id)
-                        ->where('provider_id', $user->provider->id)
-                        ->exists()))) {
-                return $this->error('Unauthorized', 403);
-            }
-
-            // Format the response based on who's viewing
-            $formattedData = $this->formatRequestDetails($request, $user->user_type);
-
-            return $this->success($formattedData, 'Request details fetched successfully');
-        } catch (\Exception $e) {
-            return $this->error('Failed to fetch request details: ' . $e->getMessage(), 500);
+        if (!$request) {
+            return $this->error('Request not found', 404);
         }
-    }
 
+        $user = Auth::user();
+
+        // Authorization checks
+        if ($user->user_type === 'customer' && (!$user->customer || $request->customer_id !== $user->customer->id)) {
+            return $this->error('Unauthorized', 403);
+        }
+
+        if ($user->user_type === 'provider' && (!$user->provider ||
+            ($request->assigned_provider_id !== $user->provider->id &&
+                !RequestProvider::where('request_id', $id)
+                    ->where('provider_id', $user->provider->id)
+                    ->exists()))) {
+            return $this->error('Unauthorized', 403);
+        }
+
+        // Format the response based on who's viewing
+        $formattedData = $this->formatRequestDetails($request, $user->user_type);
+
+        // Add Google Maps link to the location data
+        if (isset($formattedData['location']) && $request->latitude && $request->longitude) {
+            $formattedData['location']['google_maps_link'] = sprintf(
+                'https://www.google.com/maps/search/?api=1&query=%s,%s',
+                $request->latitude,
+                $request->longitude
+            );
+        }
+
+        return $this->success($formattedData, 'Request details fetched successfully');
+    } catch (\Exception $e) {
+        return $this->error('Failed to fetch request details: ' . $e->getMessage(), 500);
+    }
+}
     // get request complaints
     public function getRequestComplaints($id)
     {
