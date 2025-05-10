@@ -271,60 +271,59 @@ class ProviderController extends Controller
     }
 
     // function to set provider availability
-public function setAvailability(Request $request)
-{
-    try {
+    public function setAvailability(Request $request)
+    {
+        try {
 
-        $user = $request->user();
+            $user = $request->user();
 
-        // Verify user is a provider
-        if ($user->user_type !== 'provider') {
-            return $this->error('Only providers can set availability', 403);
+            // Verify user is a provider
+            if ($user->user_type !== 'provider') {
+                return $this->error('Only providers can set availability', 403);
+            }
+
+            // Verify provider exists
+            if (!$user->provider) {
+                return $this->error('Provider profile not found', 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'is_available' => 'required|boolean',
+                'latitude' => 'required|numeric|between:-90,90',
+                'longitude' => 'required|numeric|between:-180,180'
+            ]);
+
+            if ($validator->fails()) {
+                return $this->error($validator->errors()->first(), 422);
+            }
+
+            DB::beginTransaction();
+
+            // Update provider location
+            $user->update([
+                'latitude' => $request->latitude,
+                'longitude' => $request->longitude
+            ]);
+
+
+            // Update provider availability
+            $user->provider->update([
+                'is_available' => $request->is_available
+            ]);
+
+            DB::commit();
+
+            return $this->success([
+                'is_available' => (bool)$user->provider->is_available,
+                'latitude' => $user->latitude,
+                'longitude' => $user->longitude
+            ], 'Provider availability updated successfully');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('ProviderController::setAvailability - ' . $e->getMessage());
+            return $this->error('Failed to update provider availability: ' . $e->getMessage(), 500);
         }
-
-        // Verify provider exists
-        if (!$user->provider) {
-            return $this->error('Provider profile not found', 404);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'is_available' => 'required|boolean',
-            'latitude' => 'required|numeric|between:-90,90',
-            'longitude' => 'required|numeric|between:-180,180'
-        ]);
-
-        if ($validator->fails()) {
-            return $this->error($validator->errors()->first(), 422);
-        }
-
-        DB::beginTransaction();
-
-        // Update provider location
-        $user->update([
-            'latitude' => $request->latitude,
-            'longitude' => $request->longitude
-        ]);
-
-
-        // Update provider availability
-        $user->provider->update([
-            'is_available' => $request->is_available
-        ]);
-
-        DB::commit();
-
-        return $this->success([
-            'is_available' => (bool)$user->provider->is_available,
-            'latitude' => $user->latitude,
-            'longitude' => $user->longitude
-        ], 'Provider availability updated successfully');
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        Log::error('ProviderController::setAvailability - ' . $e->getMessage());
-        return $this->error('Failed to update provider availability: ' . $e->getMessage(), 500);
     }
-}
 
     public function getAllProviders(Request $request)
     {
@@ -878,19 +877,19 @@ public function setAvailability(Request $request)
     {
         try {
             $user = Auth::user();
-    
+
             // Verify user is a provider
             if ($user->user_type !== 'provider') {
                 return $this->error('Only providers can view complaints', 403);
             }
-    
+
             // Verify provider exists
             if (!$user->provider) {
                 return $this->error('Provider profile not found', 404);
             }
-    
+
             $provider = $user->provider;
-    
+
             // Get all complaints submitted by this provider with request details
             $complaints = Complaint::with([
                 'request.services:id,name',
@@ -904,7 +903,7 @@ public function setAvailability(Request $request)
                     $createdAt = $complaint->created_at ? $complaint->created_at->format('Y-m-d H:i:s') : null;
                     $updatedAt = $complaint->updated_at ? $complaint->updated_at->format('Y-m-d H:i:s') : null;
                     $requestCreatedAt = $complaint->request->created_at ? $complaint->request->created_at->format('Y-m-d H:i:s') : null;
-    
+
                     return [
                         'id' => $complaint->id,
                         'subject' => $complaint->subject,
@@ -933,10 +932,10 @@ public function setAvailability(Request $request)
                         ] : null
                     ];
                 });
-    
+
             // Filter out any null complaints (where request might be null)
             $complaints = $complaints->filter();
-    
+
             // Add complaint statistics
             $stats = [
                 'total_complaints' => $complaints->count(),
@@ -944,7 +943,7 @@ public function setAvailability(Request $request)
                 'resolved_complaints' => $complaints->where('status', 'resolved')->count(),
                 'rejected_complaints' => $complaints->where('status', 'rejected')->count(),
             ];
-    
+
             return $this->success([
                 'statistics' => $stats,
                 'complaints' => $complaints->values() // Reset keys after filter
@@ -954,6 +953,7 @@ public function setAvailability(Request $request)
             return $this->error('Failed to retrieve provider complaints: ' . $e->getMessage(), 500);
         }
     }
+
 
     /**
      * Get provider analytics and performance metrics
@@ -976,50 +976,49 @@ public function setAvailability(Request $request)
             $provider = $user->provider;
             $providerId = $provider->id;
 
-            // Time periods for comparison
-            $currentMonth = now()->format('Y-m');
-            $previousMonth = now()->subMonth()->format('Y-m');
-            $currentYear = now()->year;
-            $previousYear = $currentYear - 1;
+            // Helper function to ensure double format
+            $toDouble = function ($value) {
+                return is_numeric($value) ? (float)number_format((float)$value, 1, '.', '') : $value;
+            };
 
             // 1. Request Statistics
             $requestStats = [
-                'total_requests' => ServiceRequest::where('assigned_provider_id', $providerId)->count(),
-                'completed_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
+                'total_requests' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)->count()),
+                'completed_requests' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
                     ->where('status', 'completed')
-                    ->count(),
-                'cancelled_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->count()),
+                'cancelled_requests' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
                     ->where('status', 'cancelled')
-                    ->count(),
-                'current_month_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
-                    ->whereYear('created_at', $currentYear)
+                    ->count()),
+                'current_month_requests' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->whereYear('created_at', now()->year)
                     ->whereMonth('created_at', now()->month)
-                    ->count(),
-                'previous_month_requests' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->count()),
+                'previous_month_requests' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
                     ->whereYear('created_at', now()->subMonth()->year)
                     ->whereMonth('created_at', now()->subMonth()->month)
-                    ->count(),
+                    ->count()),
             ];
 
             // 2. Earnings Analysis
             $earningsStats = [
-                'total_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                'total_earnings' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
                     ->where('status', 'completed')
-                    ->sum('total_price'),
-                'current_month_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->sum('total_price')),
+                'current_month_earnings' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
                     ->where('status', 'completed')
-                    ->whereYear('completed_at', $currentYear)
+                    ->whereYear('completed_at', now()->year)
                     ->whereMonth('completed_at', now()->month)
-                    ->sum('total_price'),
-                'previous_month_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->sum('total_price')),
+                'previous_month_earnings' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
                     ->where('status', 'completed')
                     ->whereYear('completed_at', now()->subMonth()->year)
                     ->whereMonth('completed_at', now()->subMonth()->month)
-                    ->sum('total_price'),
-                'yearly_earnings' => ServiceRequest::where('assigned_provider_id', $providerId)
+                    ->sum('total_price')),
+                'yearly_earnings' => $toDouble(ServiceRequest::where('assigned_provider_id', $providerId)
                     ->where('status', 'completed')
-                    ->whereYear('completed_at', $currentYear)
-                    ->sum('total_price'),
+                    ->whereYear('completed_at', now()->year)
+                    ->sum('total_price')),
             ];
 
             // 3. Rating and Feedback Analysis
@@ -1028,22 +1027,21 @@ public function setAvailability(Request $request)
                 ->pluck('id');
 
             $feedbackStats = [
-                'average_rating' => RequestFeedback::whereIn('request_id', $completedRequests)
-                    ->avg('rating'),
-                'total_feedbacks' => RequestFeedback::whereIn('request_id', $completedRequests)
-                    ->count(),
+                'average_rating' => $toDouble(RequestFeedback::whereIn('request_id', $completedRequests)
+                    ->avg('rating')),
+                'total_feedbacks' => $toDouble(RequestFeedback::whereIn('request_id', $completedRequests)
+                    ->count()),
                 'rating_distribution' => RequestFeedback::whereIn('request_id', $completedRequests)
                     ->select('rating', DB::raw('count(*) as count'))
                     ->groupBy('rating')
                     ->orderBy('rating', 'desc')
                     ->get()
-                    ->mapWithKeys(function ($item) {
-                        return [$item->rating => $item->count];
+                    ->mapWithKeys(function ($item) use ($toDouble) {
+                        return [(string)$item->rating => $toDouble($item->count)];
                     }),
             ];
 
-
-            // 5. Monthly Trends (last 6 months)
+            // 4. Monthly Trends (last 6 months)
             $monthlyTrends = ServiceRequest::where('assigned_provider_id', $providerId)
                 ->where('status', 'completed')
                 ->where('completed_at', '>=', now()->subMonths(6))
@@ -1054,13 +1052,20 @@ public function setAvailability(Request $request)
                 )
                 ->groupBy('month')
                 ->orderBy('month')
-                ->get();
+                ->get()
+                ->map(function ($item) use ($toDouble) {
+                    return [
+                        'month' => $item->month,
+                        'request_count' => $toDouble($item->request_count),
+                        'total_earnings' => $toDouble($item->total_earnings)
+                    ];
+                });
 
-            // 6. Performance Metrics
+            // 5. Performance Metrics
             $performanceMetrics = [
-                'average_completion_time' => $this->calculateAverageCompletionTime($providerId),
-                'acceptance_rate' => $this->calculateAcceptanceRate($providerId),
-                'cancellation_rate' => $this->calculateCancellationRate($providerId),
+                'average_completion_time' => $toDouble($this->calculateAverageCompletionTime($providerId)),
+                'acceptance_rate' => $toDouble($this->calculateAcceptanceRate($providerId)),
+                'cancellation_rate' => $toDouble($this->calculateCancellationRate($providerId)),
             ];
 
             return $this->success([
@@ -1088,7 +1093,7 @@ public function setAvailability(Request $request)
             ->get();
 
         if ($completedRequests->isEmpty()) {
-            return 0;
+            return 0.0;
         }
 
         $totalMinutes = $completedRequests->sum(function ($request) {
@@ -1109,7 +1114,7 @@ public function setAvailability(Request $request)
             ->count();
 
         if ($totalAssigned === 0) {
-            return 0;
+            return 0.0;
         }
 
         return round(($completed / $totalAssigned) * 100, 1);
@@ -1126,7 +1131,7 @@ public function setAvailability(Request $request)
             ->count();
 
         if ($totalAssigned === 0) {
-            return 0;
+            return 0.0;
         }
 
         return round(($cancelled / $totalAssigned) * 100, 1);
