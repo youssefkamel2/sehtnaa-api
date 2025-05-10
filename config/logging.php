@@ -87,7 +87,7 @@ return [
         'fcm_errors' => [
             'driver' => 'daily',
             'path' => storage_path('logs/fcm_errors.log'),
-            'level' => 'error',
+            'level' => 'debug',
             'days' => 14,
         ],
         
