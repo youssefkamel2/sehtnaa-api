@@ -178,7 +178,7 @@ class Kernel extends ConsoleKernel
         }
 
         return [
-            'size' => round(filesize($path) / 1024 . ' KB'),
+            // 'size' => round(filesize($path) / 1024 . ' KB'),
             'last_modified' => date('Y-m-d H:i:s', filemtime($path)),
             'status' => 'exists'
         ];
