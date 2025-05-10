@@ -291,7 +291,7 @@ class ProviderController extends Controller
 
             // Send notification to customer
             $this->sendRequestCompletedNotification($serviceRequest, $provider);
-            
+
             DB::commit();
 
             return $this->success([
@@ -338,7 +338,7 @@ class ProviderController extends Controller
                 throw new \Exception($response['results'][0]['error'] ?? 'Unknown FCM error');
             }
 
-            Log::channel('fcm')->info('Request completion notification sent', [
+            Log::channel('fcm_debug')->info('Request completion notification sent', [
                 'request_id' => $serviceRequest->id,
                 'customer_id' => $customer->id,
                 'provider_id' => $provider->id,
@@ -346,6 +346,7 @@ class ProviderController extends Controller
             ]);
 
             return true;
+
         } catch (\Exception $e) {
             Log::channel('fcm_errors')->error('Failed to send request completion notification', [
                 'request_id' => $serviceRequest->id,
