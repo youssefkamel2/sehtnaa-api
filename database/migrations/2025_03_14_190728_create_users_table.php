@@ -26,7 +26,7 @@ return new class extends Migration
             $table->decimal('longitude', 11, 8)->nullable();
             $table->string('fcm_token')->nullable();
             $table->string('device_type')->nullable();
-            $table->string('profile_image')->nullable();
+            $table->string('profile_image')->default('profile_images/user.png');
             $table->date('birth_date')->nullable();
             $table->timestamps();
         });
