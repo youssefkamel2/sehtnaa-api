@@ -48,7 +48,6 @@ class ProviderNotifier
 
             DB::commit();
             return $results['notified_count'];
-
         } catch (\Exception $e) {
             DB::rollBack();
             $this->logCriticalError($e, $logData);
@@ -79,7 +78,7 @@ class ProviderNotifier
         $providers = Provider::with(['user'])
             ->where('is_available', true)
             ->where('provider_type', $primaryService->provider_type)
-            ->whereNotIn('id', function($query) use ($request) {
+            ->whereNotIn('id', function ($query) use ($request) {
                 $query->select('provider_id')
                     ->from('request_providers')
                     ->where('request_id', $request->id);
@@ -97,11 +96,11 @@ class ProviderNotifier
     protected function findNearbyProviders($providers, ServiceRequest $request, $radius, &$logData)
     {
         $nearbyProviders = [];
-        
+
         foreach ($providers as $provider) {
             $providerLog = $this->createProviderLogEntry($provider);
             $logData['total_providers_processed']++;
-            
+
             if (!$this->hasValidLocation($provider, $providerLog)) {
                 $providerLog['skipped'] = true;
                 $providerLog['skipped_reason'] = 'Invalid location';
@@ -120,7 +119,7 @@ class ProviderNotifier
 
                 $providerLog['distance'] = round($distance, 2);
                 $providerLog['within_range'] = $distance <= $radius;
-                
+
                 if ($providerLog['within_range']) {
                     $logData['providers_within_radius']++;
                     $nearbyProviders[] = [
@@ -159,7 +158,7 @@ class ProviderNotifier
             $provider = $nearby['provider'];
             $distance = $nearby['distance'];
             $providerLog = $nearby['log_entry'];
-            
+
             $providerLog['processing_started'] = true;
             $providerLog['database_recorded'] = false;
             $providerLog['notification_attempted'] = false;
@@ -171,7 +170,7 @@ class ProviderNotifier
                     'provider_id' => $provider->id,
                     'status' => 'pending'
                 ]);
-                
+
                 $providerLog['database_recorded'] = true;
                 $results['notified_count']++;
                 $logData['providers_notified']++;
@@ -195,11 +194,10 @@ class ProviderNotifier
                     $results['firestore_failed']++;
                     $providerLog['firestore_updated'] = false;
                 }
-
             } catch (\Exception $e) {
                 $providerLog['error'] = 'Processing failed: ' . $e->getMessage();
                 $logData['errors'][] = $providerLog['error'];
-                
+
                 if ($providerLog['notification_attempted'] && !$providerLog['notification_sent']) {
                     $results['notification_failed']++;
                 }
@@ -259,7 +257,7 @@ class ProviderNotifier
 
         try {
             $serviceNames = $request->services->pluck('name')->implode(', ');
-            
+
             $response = $this->firebaseService->sendToDevice(
                 $provider->user->fcm_token,
                 'New Service Request',
@@ -292,12 +290,17 @@ class ProviderNotifier
     protected function updateFirestore($provider, $request, $distance, $radius, &$providerLog)
     {
         try {
-            $serviceNames = $request->services->pluck('name')->implode(', ');
-            
+
+            // Get customer name (assuming Customer is a User model)
+            $customerName = 'Unknown Customer';
+            if ($request->customer) {
+                $customerName = $request->customer->user->first_name . ' ' . $request->customer->user->last_name;
+            }
+
+
             $data = [
                 'request_id' => (string) $request->id,
                 'customer_name' => $request->first_name . $request->last_name ?? 'Unknown Customer',
-                'service_names' => $serviceNames,
                 'services_count' => $request->services->count(),
                 'total_price' => $request->total_price,
                 'gender' => $request->gender ?? 'unknown',
@@ -348,7 +351,7 @@ class ProviderNotifier
         $logData['notification_success'] = $results['notification_success'];
         $logData['notification_failed'] = $results['notification_failed'];
         $logData['execution_stage'] = 'completed';
-        
+
         Log::channel('provider_matching')->info('Provider notification results', $logData);
     }
 
