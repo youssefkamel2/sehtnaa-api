@@ -57,7 +57,8 @@ class ProviderController extends Controller
 
             // Get all providers who were notified about this request
             $notifiedProviders = RequestProvider::where('request_id', $serviceRequest->id)
-                ->pluck('provider_id');
+                ->join('providers', 'request_providers.provider_id', '=', 'providers.id')
+                ->pluck('providers.user_id');
 
             // Update request status and assign provider
             $serviceRequest->update([
