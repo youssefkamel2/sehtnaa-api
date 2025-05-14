@@ -463,19 +463,19 @@ class RequestController extends Controller
     {
         try {
             $user = Auth::user();
-    
+
             if (!in_array($user->user_type, ['customer', 'provider'])) {
                 return $this->error('Unauthorized access', 403);
             }
-    
+
             if ($user->user_type === 'customer' && !$user->customer) {
                 return $this->error('Customer profile not found', 404);
             }
-    
+
             if ($user->user_type === 'provider' && !$user->provider) {
                 return $this->error('Provider profile not found', 404);
             }
-    
+
             $requests = ServiceRequest::with([
                 'services:id,name,price,category_id',
                 'services.category:id,is_multiple,name',
@@ -519,7 +519,7 @@ class RequestController extends Controller
                         'feedbacks' => $request->feedbacks,
                         'cancellations' => $request->cancellations
                     ];
-    
+
                     // Add provider data for customers
                     if ($user->user_type === 'customer' && $request->assignedProvider) {
                         $baseData['provider'] = [
@@ -531,7 +531,7 @@ class RequestController extends Controller
                             'rating' => $request->assignedProvider->average_rating ?? 0
                         ];
                     }
-    
+
                     // Add customer data for providers
                     if ($user->user_type === 'provider' && $request->customer) {
                         $baseData['customer'] = [
@@ -543,10 +543,10 @@ class RequestController extends Controller
                             'age' => $request->age
                         ];
                     }
-    
+
                     return $baseData;
                 });
-    
+
             return $this->success($requests, 'Requests fetched successfully');
         } catch (\Exception $e) {
             return $this->error('Failed to fetch requests: ' . $e->getMessage(), 500);
@@ -554,55 +554,55 @@ class RequestController extends Controller
     }
 
     public function getRequestDetails($id)
-{
-    try {
-        $request = ServiceRequest::with([
-            'services:id,name,price,category_id',
-            'services.category:id,is_multiple,name',
-            'assignedProvider.user:id,first_name,last_name,phone,profile_image',
-            'assignedProvider:id,provider_type,user_id',
-            'customer.user:id,first_name,last_name,phone,profile_image', // Added customer relationship
-            'feedbacks.user:id,first_name,last_name,profile_image',
-            'cancellations',
-            'complaints.user:id,first_name,last_name,profile_image'
-        ])->find($id);
+    {
+        try {
+            $request = ServiceRequest::with([
+                'services:id,name,price,category_id',
+                'services.category:id,is_multiple,name',
+                'assignedProvider.user:id,first_name,last_name,phone,profile_image',
+                'assignedProvider:id,provider_type,user_id',
+                'customer.user:id,first_name,last_name,phone,profile_image', // Added customer relationship
+                'feedbacks.user:id,first_name,last_name,profile_image',
+                'cancellations',
+                'complaints.user:id,first_name,last_name,profile_image'
+            ])->find($id);
 
-        if (!$request) {
-            return $this->error('Request not found', 404);
+            if (!$request) {
+                return $this->error('Request not found', 404);
+            }
+
+            $user = Auth::user();
+
+            // Authorization checks
+            if ($user->user_type === 'customer' && (!$user->customer || $request->customer_id !== $user->customer->id)) {
+                return $this->error('Unauthorized', 403);
+            }
+
+            if ($user->user_type === 'provider' && (!$user->provider ||
+                ($request->assigned_provider_id !== $user->provider->id &&
+                    !RequestProvider::where('request_id', $id)
+                        ->where('provider_id', $user->provider->id)
+                        ->exists()))) {
+                return $this->error('Unauthorized', 403);
+            }
+
+            // Format the response based on who's viewing
+            $formattedData = $this->formatRequestDetails($request, $user->user_type);
+
+            // Add Google Maps link to the location data
+            if (isset($formattedData['location']) && $request->latitude && $request->longitude) {
+                $formattedData['location']['google_maps_link'] = sprintf(
+                    'https://www.google.com/maps/search/?api=1&query=%s,%s',
+                    $request->latitude,
+                    $request->longitude
+                );
+            }
+
+            return $this->success($formattedData, 'Request details fetched successfully');
+        } catch (\Exception $e) {
+            return $this->error('Failed to fetch request details: ' . $e->getMessage(), 500);
         }
-
-        $user = Auth::user();
-
-        // Authorization checks
-        if ($user->user_type === 'customer' && (!$user->customer || $request->customer_id !== $user->customer->id)) {
-            return $this->error('Unauthorized', 403);
-        }
-
-        if ($user->user_type === 'provider' && (!$user->provider ||
-            ($request->assigned_provider_id !== $user->provider->id &&
-                !RequestProvider::where('request_id', $id)
-                    ->where('provider_id', $user->provider->id)
-                    ->exists()))) {
-            return $this->error('Unauthorized', 403);
-        }
-
-        // Format the response based on who's viewing
-        $formattedData = $this->formatRequestDetails($request, $user->user_type);
-
-        // Add Google Maps link to the location data
-        if (isset($formattedData['location']) && $request->latitude && $request->longitude) {
-            $formattedData['location']['google_maps_link'] = sprintf(
-                'https://www.google.com/maps/search/?api=1&query=%s,%s',
-                $request->latitude,
-                $request->longitude
-            );
-        }
-
-        return $this->success($formattedData, 'Request details fetched successfully');
-    } catch (\Exception $e) {
-        return $this->error('Failed to fetch request details: ' . $e->getMessage(), 500);
     }
-}
     // get request complaints
     public function getRequestComplaints($id)
     {
@@ -776,10 +776,13 @@ class RequestController extends Controller
         }
     }
 
+
     public function cancelRequest(Request $request, $id)
     {
         try {
-            $serviceRequest = ServiceRequest::with(['customer.user', 'assignedProvider.user'])->find($id);
+            $serviceRequest = ServiceRequest::with(['customer.user', 'assignedProvider.user'])
+                ->find($id);
+
             if (!$serviceRequest) {
                 return $this->error('Request not found', 404);
             }
@@ -809,12 +812,12 @@ class RequestController extends Controller
                 return $this->error($validator->errors()->first(), 422);
             }
 
+            DB::beginTransaction();
 
-            // Create cancellation log - using getRawOriginal() to bypass accessor
+            // Create cancellation log
             $cancellation = new RequestCancellationLog([
                 'cancelled_by' => $isCustomer ? 'customer' : 'provider',
                 'reason' => $request->reason,
-                // if request is cancelled after acceptance, set is_after_acceptance to 1
                 'is_after_acceptance' => $serviceRequest->getRawOriginal('status') === 'accepted' ? 1 : 0,
                 'cancelled_at' => now(),
             ]);
@@ -825,12 +828,49 @@ class RequestController extends Controller
             $serviceRequest->status = 'cancelled';
             $serviceRequest->save();
 
+            // Get all providers who were notified about this request
+            $notifiedProviders = RequestProvider::where('request_id', $serviceRequest->id)
+                ->pluck('provider_id');
+
+            // Delete the request from all providers' Firestore collections
+            $this->deleteRequestFromProviders($serviceRequest, $notifiedProviders);
+
             // Send notifications
             $this->handleCancellationNotifications($serviceRequest, $user);
 
+            DB::commit();
+
             return $this->success(null, 'Request cancelled successfully');
         } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to cancel request: ' . $e->getMessage());
             return $this->error('Failed to cancel request: ' . $e->getMessage(), 500);
+        }
+    }
+
+    protected function deleteRequestFromProviders(ServiceRequest $serviceRequest, $providerIds)
+    {
+        try {
+            foreach ($providerIds as $providerId) {
+                $this->firestoreService->deleteDocument(
+                    'provider_requests/' . $providerId . '/notifications',
+                    (string) $serviceRequest->id
+                );
+            }
+
+            Log::channel('firestore')->info('Request deleted from providers Firestore', [
+                'request_id' => $serviceRequest->id,
+                'providers_count' => count($providerIds)
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::channel('firestore_errors')->error('Failed to delete request from providers Firestore', [
+                'request_id' => $serviceRequest->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
         }
     }
 
@@ -1077,7 +1117,7 @@ class RequestController extends Controller
                 ];
             })
         ];
-    
+
         // Add provider data for customers
         if ($userType === 'customer' && $request->assignedProvider) {
             $baseData['provider'] = [
@@ -1089,7 +1129,7 @@ class RequestController extends Controller
                 'rating' => $request->assignedProvider->average_rating ?? 0
             ];
         }
-    
+
         // Add customer data for providers
         if ($userType === 'provider' && $request->customer) {
             $baseData['customer'] = [
@@ -1101,7 +1141,7 @@ class RequestController extends Controller
                 'age' => $request->age
             ];
         }
-    
+
         return $baseData;
     }
 }

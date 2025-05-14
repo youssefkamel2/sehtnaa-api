@@ -301,6 +301,7 @@ class ProviderNotifier
             $data = [
                 'request_id' => (string) $request->id,
                 'customer_name' => $customerName,
+                'customer_image' => $request->customer->user->image ?? null,
                 'services_count' => $request->services->count(),
                 'total_price' => $request->total_price,
                 'gender' => $request->gender ?? 'unknown',
