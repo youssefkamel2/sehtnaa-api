@@ -851,6 +851,9 @@ class RequestController extends Controller
     protected function deleteRequestFromProviders(ServiceRequest $serviceRequest, $providerIds)
     {
         try {
+
+            print_r($providerIds);die;
+
             foreach ($providerIds as $providerId) {
                 $this->firestoreService->deleteDocument(
                     'provider_requests/' . $providerId . '/notifications',
