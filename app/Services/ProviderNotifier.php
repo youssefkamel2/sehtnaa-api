@@ -311,7 +311,7 @@ class ProviderNotifier
             ];
 
             $result = $this->firestoreService->createDocument(
-                'provider_requests/' . $provider->id . '/notifications',
+                'provider_requests/' . $provider->user->id . '/notifications',
                 (string) $request->id,
                 $data
             );
