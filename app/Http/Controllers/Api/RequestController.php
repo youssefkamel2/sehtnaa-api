@@ -782,38 +782,29 @@ class RequestController extends Controller
         try {
             $serviceRequest = ServiceRequest::with(['customer.user', 'assignedProvider.user'])
                 ->find($id);
-
             if (!$serviceRequest) {
                 return $this->error('Request not found', 404);
             }
-
             $user = Auth::user();
             $isCustomer = $user->user_type === 'customer';
             $isProvider = $user->user_type === 'provider';
-
             // Authorization check
             if ($isCustomer && $serviceRequest->customer_id !== $user->customer->id) {
                 return $this->error('Unauthorized', 403);
             }
-
             if ($isProvider && $serviceRequest->assigned_provider_id !== $user->provider->id) {
                 return $this->error('Unauthorized', 403);
             }
-
             if (!$serviceRequest->isCancellable()) {
                 return $this->error('Request cannot be cancelled at this stage', 400);
             }
-
             $validator = Validator::make($request->all(), [
                 'reason' => 'required|string|max:500',
             ]);
-
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 422);
             }
-
             DB::beginTransaction();
-
             // Create cancellation log
             $cancellation = new RequestCancellationLog([
                 'cancelled_by' => $isCustomer ? 'customer' : 'provider',
@@ -821,25 +812,19 @@ class RequestController extends Controller
                 'is_after_acceptance' => $serviceRequest->getRawOriginal('status') === 'accepted' ? 1 : 0,
                 'cancelled_at' => now(),
             ]);
-
             $serviceRequest->cancellations()->save($cancellation);
-
             // Update request status
             $serviceRequest->status = 'cancelled';
             $serviceRequest->save();
-
-            // Get all providers who were notified about this request
-            $notifiedProviders = RequestProvider::where('request_id', $serviceRequest->id)
-                ->pluck('provider_id');
-
-            // Delete the request from all providers' Firestore collections
-            $this->deleteRequestFromProviders($serviceRequest, $notifiedProviders);
-
+            // Get all providers who were notified about this request and map to user IDs
+            $notifiedProviderUserIds = RequestProvider::where('request_id', $serviceRequest->id)
+                ->join('providers', 'request_providers.provider_id', '=', 'providers.id')
+                ->pluck('providers.user_id');
+            // Delete the request from all providers' Firestore collections using user IDs
+            $this->deleteRequestFromProviders($serviceRequest, $notifiedProviderUserIds);
             // Send notifications
             $this->handleCancellationNotifications($serviceRequest, $user);
-
             DB::commit();
-
             return $this->success(null, 'Request cancelled successfully');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -848,27 +833,22 @@ class RequestController extends Controller
         }
     }
 
-    protected function deleteRequestFromProviders(ServiceRequest $serviceRequest, $providerIds)
+    protected function deleteRequestFromProviders(ServiceRequest $serviceRequest, $providerUserIds)
     {
         try {
-
-            print_r($providerIds);die;
-
-            foreach ($providerIds as $providerId) {
+            foreach ($providerUserIds as $userId) {
                 $this->firestoreService->deleteDocument(
-                    'provider_requests/' . $providerId . '/notifications',
+                    'provider_requests/' . $userId . '/notifications',
                     (string) $serviceRequest->id
                 );
             }
-
             Log::channel('firestore')->info('Request deleted from providers Firestore', [
                 'request_id' => $serviceRequest->id,
-                'providers_count' => count($providerIds)
+                'providers_count' => count($providerUserIds)
             ]);
-
             return true;
         } catch (\Exception $e) {
-            Log::channel('firestore_errors')->error('Failed to delete request from providers Firestore', [
+            Log::channel('firestore')->debug('Failed to delete request from providers Firestore', [
                 'request_id' => $serviceRequest->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
