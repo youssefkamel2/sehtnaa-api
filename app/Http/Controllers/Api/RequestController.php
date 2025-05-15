@@ -1067,7 +1067,7 @@ class RequestController extends Controller
             }),
             'total_price' => $request->total_price,
             'status' => $request->status,
-            'created_at' => $request->created_at,
+            'created_at' => $request->created_at->format('Y-m-d H:i:s'),
             'additional_info' => $request->additional_info,
             'location' => [
                 'latitude' => $request->latitude,
