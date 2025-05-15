@@ -45,6 +45,16 @@ public function acceptRequest(Request $request, $requestId)
             return $this->error('Provider account not found', 404);
         }
 
+        
+        // Get and validate the request with services
+        $serviceRequest = ServiceRequest::with(['customer.user', 'services'])
+            ->where('status', 'pending')
+            ->find($requestId);
+
+        if (!$serviceRequest) {
+            return $this->error('Request not found or already accepted', 404);
+        }
+
         // Validate input for organizational providers
         $validator = Validator::make($request->all(), [
             'price' => [
@@ -61,15 +71,6 @@ public function acceptRequest(Request $request, $requestId)
         }
 
         DB::beginTransaction();
-
-        // Get and validate the request with services
-        $serviceRequest = ServiceRequest::with(['customer.user', 'services'])
-            ->where('status', 'pending')
-            ->find($requestId);
-
-        if (!$serviceRequest) {
-            return $this->error('Request not found or already accepted', 404);
-        }
 
         // Check if provider type matches service requirements
         $primaryService = $serviceRequest->services->first();
