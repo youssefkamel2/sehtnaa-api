@@ -24,6 +24,16 @@ class Request extends Model
         'total_price' => 'decimal:2',
     ];
 
+    /**
+     * Prepare a date for array / JSON serialization.
+     * This will format all dates to the application timezone (Africa/Cairo)
+     * while keeping them in UTC in the database.
+     */
+    protected function serializeDate(\DateTimeInterface $date)
+    {
+        return $date->format('Y-m-d H:i:s');
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->with('user');
