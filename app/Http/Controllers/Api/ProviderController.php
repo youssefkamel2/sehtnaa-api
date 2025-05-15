@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\RequestFeedback;
 use App\Models\RequestProvider;
+use Illuminate\Validation\Rule;
 use App\Models\ProviderDocument;
 use App\Models\RequiredDocument;
 use App\Services\FirebaseService;
@@ -35,65 +36,94 @@ class ProviderController extends Controller
     }
 
 
-    public function acceptRequest(Request $request, $requestId)
-    {
-        try {
-            $provider = Auth::user()->provider;
+public function acceptRequest(Request $request, $requestId)
+{
+    try {
+        $provider = Auth::user()->provider;
 
-            if (!$provider) {
-                return $this->error('Provider account not found', 404);
-            }
-
-            DB::beginTransaction();
-
-            // Get and validate the request
-            $serviceRequest = ServiceRequest::with(['customer.user', 'services'])
-                ->where('status', 'pending')
-                ->find($requestId);
-
-            if (!$serviceRequest) {
-                return $this->error('Request not found or already accepted', 404);
-            }
-
-            // Get all providers who were notified about this request
-            $notifiedProviders = RequestProvider::where('request_id', $serviceRequest->id)
-                ->join('providers', 'request_providers.provider_id', '=', 'providers.id')
-                ->pluck('providers.user_id');
-
-            // Update request status and assign provider
-            $serviceRequest->update([
-                'status' => 'accepted',
-                'assigned_provider_id' => $provider->id,
-                'started_at' => now()
-            ]);
-
-            // Send notification to customer
-            $this->sendRequestAcceptedNotification($serviceRequest, $provider);
-
-            // Send real-time update to customer
-            $this->sendRequestAcceptedRealTimeUpdate($serviceRequest, $provider);
-
-            // update provider is_available to be false
-            $provider->update([
-                'is_available' => false
-            ]);
-
-            // Delete the request from all providers' Firestore collections
-            $this->deleteRequestFromProviders($serviceRequest, $notifiedProviders);
-
-            DB::commit();
-
-            return $this->success([
-                'request_id' => $serviceRequest->id,
-                'status' => 'accepted',
-                'provider_id' => $provider->id
-            ], 'Request accepted successfully');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('ProviderController::acceptRequest - ' . $e->getMessage());
-            return $this->error('Failed to accept request: ' . $e->getMessage(), 500);
+        if (!$provider) {
+            return $this->error('Provider account not found', 404);
         }
+
+        // Validate input for organizational providers
+        $validator = Validator::make($request->all(), [
+            'price' => [
+                Rule::requiredIf(function () use ($provider) {
+                    return $provider->provider_type === 'organizational';
+                }),
+                'numeric',
+                'min:0'
+            ]
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 422);
+        }
+
+        DB::beginTransaction();
+
+        // Get and validate the request with services
+        $serviceRequest = ServiceRequest::with(['customer.user', 'services'])
+            ->where('status', 'pending')
+            ->find($requestId);
+
+        if (!$serviceRequest) {
+            return $this->error('Request not found or already accepted', 404);
+        }
+
+        // Check if provider type matches service requirements
+        $primaryService = $serviceRequest->services->first();
+        if ($primaryService && $primaryService->provider_type !== $provider->provider_type) {
+            return $this->error('Provider type does not match service requirements', 400);
+        }
+
+        // For organizational providers, update the total price
+        if ($provider->provider_type === 'organizational') {
+            $serviceRequest->update([
+                'total_price' => $request->price
+            ]);
+        }
+
+        // Get all providers who were notified about this request
+        $notifiedProviders = RequestProvider::where('request_id', $serviceRequest->id)
+            ->join('providers', 'request_providers.provider_id', '=', 'providers.id')
+            ->pluck('providers.user_id');
+
+        // Update request status and assign provider
+        $serviceRequest->update([
+            'status' => 'accepted',
+            'assigned_provider_id' => $provider->id,
+            'started_at' => now()
+        ]);
+
+        // Send notification to customer
+        $this->sendRequestAcceptedNotification($serviceRequest, $provider);
+
+        // Send real-time update to customer
+        $this->sendRequestAcceptedRealTimeUpdate($serviceRequest, $provider);
+
+        // update provider is_available to be false
+        $provider->update([
+            'is_available' => false
+        ]);
+
+        // Delete the request from all providers' Firestore collections
+        $this->deleteRequestFromProviders($serviceRequest, $notifiedProviders);
+
+        DB::commit();
+
+        return $this->success([
+            'request_id' => $serviceRequest->id,
+            'status' => 'accepted',
+            'provider_id' => $provider->id,
+            'total_price' => $serviceRequest->total_price
+        ], 'Request accepted successfully');
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('ProviderController::acceptRequest - ' . $e->getMessage());
+        return $this->error('Failed to accept request: ' . $e->getMessage(), 500);
     }
+}
 
 
     protected function deleteRequestFromProviders(ServiceRequest $serviceRequest, $providerIds)
