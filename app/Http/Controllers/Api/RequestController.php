@@ -900,6 +900,8 @@ class RequestController extends Controller
                                 'price' => $service->pivot->price
                             ];
                         }),
+                        // return the category name for first service only
+                        'category' => $request->services->first()->category->name ?? null,
                         'total_price' => $request->total_price,
                         'status' => $request->status,
                         'created_at' => $request->created_at->format('Y-m-d H:i:s'),
