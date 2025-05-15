@@ -827,6 +827,37 @@ class ProviderController extends Controller
         }
     }
 
+    public function updateFcmToken(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email',
+            'fcm_token' => 'required|string',
+            'device_type' => 'sometimes|in:ios,android'
+        ]);
+
+        if ($validator->fails()) {
+            return $this->error($validator->errors()->first(), 400);
+        }
+
+        $user = User::where('email', $request->email);
+        if (!$user) {
+            return $this->error('User not found', 404);
+        }
+        $user = $user->first();
+        if ($user->user_type !== 'provider') {
+            return $this->error('The provided email does not belong to a provider.', 400);
+        }
+        // Update the FCM token and device type
+        $user->update([
+            'fcm_token' => $request->fcm_token,
+            'device_type' => $request->device_type ?? null
+        ]);
+        
+
+        return $this->success(null, 'FCM token updated');
+    }
+
+
     /**
      * Helper method to calculate document status
      */

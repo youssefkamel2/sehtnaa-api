@@ -34,6 +34,7 @@ Route::prefix('provider')->middleware('throttle:20,1')->group(function () {
     Route::post('/documents', [ProviderController::class, 'listDocuments']);
     Route::post('/document-status', [ProviderController::class, 'documentStatus']);
     Route::post('/required-documents', [ProviderController::class, 'getRequiredDocuments']);
+    Route::post('/update-fcm-token', [ProviderController::class, 'updateFcmToken']);
     Route::post('/accept/{requestId}', [ProviderController::class, 'acceptRequest'])->middleware(['auth:api']);
     Route::post('/complete/{requestId}', [ProviderController::class, 'completeRequest'])->middleware(['auth:api']);
     Route::get('/feedbacks', [ProviderController::class, 'getProviderFeedbacks'])->middleware(['auth:api']);
