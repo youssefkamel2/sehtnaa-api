@@ -553,18 +553,21 @@ class RequestController extends Controller
         }
     }
 
+
     public function getRequestDetails($id)
     {
         try {
             $request = ServiceRequest::with([
                 'services:id,name,price,category_id',
                 'services.category:id,is_multiple,name',
+                'services.requirements:id,service_id,name,type', // Add service requirements
                 'assignedProvider.user:id,first_name,last_name,phone,profile_image',
                 'assignedProvider:id,provider_type,user_id',
-                'customer.user:id,first_name,last_name,phone,profile_image', // Added customer relationship
+                'customer.user:id,first_name,last_name,phone,profile_image',
                 'feedbacks.user:id,first_name,last_name,profile_image',
                 'cancellations',
-                'complaints.user:id,first_name,last_name,profile_image'
+                'complaints.user:id,first_name,last_name,profile_image',
+                'requirements.serviceRequirement:id,service_id,name,type' // Add request requirements
             ])->find($id);
 
             if (!$request) {
@@ -603,6 +606,7 @@ class RequestController extends Controller
             return $this->error('Failed to fetch request details: ' . $e->getMessage(), 500);
         }
     }
+
     // get request complaints
     public function getRequestComplaints($id)
     {
@@ -1055,26 +1059,44 @@ class RequestController extends Controller
     {
         $baseData = [
             'id' => $request->id,
-            'services' => $request->services->map(function ($service) {
-                return [
+            'services' => $request->services->map(function ($service) use ($request) {
+                $serviceData = [
                     'id' => $service->id,
                     'name' => $service->name,
-                    'price' => $service->price,
+                    'price' => $service->pivot->price,
                     'category' => [
                         'id' => $service->category->id,
                         'name' => $service->category->name,
                         'is_multiple' => $service->category->is_multiple
-                    ]
+                    ],
+                    'requirements' => $service->requirements->map(function ($requirement) {
+                        return [
+                            'id' => $requirement->id,
+                            'name' => $requirement->name,
+                            'type' => $requirement->type
+                        ];
+                    })
                 ];
+                return $serviceData;
             }),
             'total_price' => $request->total_price,
             'status' => $request->status,
-            'created_at' => $request->created_at->format('Y-m-d H:i:s'),
+            'created_at' => $request->created_at,
             'additional_info' => $request->additional_info,
             'location' => [
                 'latitude' => $request->latitude,
                 'longitude' => $request->longitude
             ],
+            'requirements' => $request->requirements->map(function ($requirement) {
+                return [
+                    'id' => $requirement->id,
+                    'requirement_id' => $requirement->service_requirement_id,
+                    'name' => $requirement->serviceRequirement->name,
+                    'type' => $requirement->serviceRequirement->type,
+                    'value' => $requirement->value,
+                    'file_url' => $requirement->file_path ? asset('storage/' . $requirement->file_path) : null
+                ];
+            }),
             'feedbacks' => $request->feedbacks->map(function ($feedback) {
                 return [
                     'id' => $feedback->id,
