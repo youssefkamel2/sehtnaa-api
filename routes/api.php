@@ -92,25 +92,24 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
 
     Route::prefix('analytics')->group(function () {
         // Customers
-    Route::get('/customers', [AnalyticsController::class, 'customerAnalytics']);
-    Route::get('/customers-export', [AnalyticsController::class, 'exportCustomerAnalytics'])->name('admin.analytics.customers.export');
-    
-    // Services
-    Route::get('/services', [AnalyticsController::class, 'serviceAnalytics']);
-    Route::get('/services-export', [AnalyticsController::class, 'exportServiceAnalytics'])->name('admin.analytics.services.export');
-    
-    // Providers
-    Route::get('/providers', [AnalyticsController::class, 'providerAnalytics']);
-    Route::get('/providers-export', [AnalyticsController::class, 'exportProviderAnalytics'])->name('admin.analytics.providers.export');
-    
-    // Complaints
-    Route::get('/complaints', [AnalyticsController::class, 'complaintAnalytics']);
-    Route::get('/complaints-export', [AnalyticsController::class, 'exportComplaintAnalytics'])->name('admin.analytics.complaints.export');
-    
-    // Requests
-    Route::get('/requests', [AnalyticsController::class, 'requestAnalytics']);
-    Route::get('/requests-export', [AnalyticsController::class, 'exportRequestAnalytics'])->name('admin.analytics.requests.export');
-    
+        Route::get('/customers', [AnalyticsController::class, 'customerAnalytics']);
+        Route::get('/customers-export', [AnalyticsController::class, 'exportCustomerAnalytics'])->name('admin.analytics.customers.export');
+
+        // Services
+        Route::get('/services', [AnalyticsController::class, 'serviceAnalytics']);
+        Route::get('/services-export', [AnalyticsController::class, 'exportServiceAnalytics'])->name('admin.analytics.services.export');
+
+        // Providers
+        Route::get('/providers', [AnalyticsController::class, 'providerAnalytics']);
+        Route::get('/providers-export', [AnalyticsController::class, 'exportProviderAnalytics'])->name('admin.analytics.providers.export');
+
+        // Complaints
+        Route::get('/complaints', [AnalyticsController::class, 'complaintAnalytics']);
+        Route::get('/complaints-export', [AnalyticsController::class, 'exportComplaintAnalytics'])->name('admin.analytics.complaints.export');
+
+        // Requests
+        Route::get('/requests', [AnalyticsController::class, 'requestAnalytics']);
+        Route::get('/requests-export', [AnalyticsController::class, 'exportRequestAnalytics'])->name('admin.analytics.requests.export');
     });
 });
 
@@ -125,7 +124,6 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
     Route::post('/update-password', [UserController::class, 'changePassword']);
     Route::get('/ongoing-requests', [RequestController::class, 'getOngoingRequests']);
 });
-
 
 Route::prefix('categories')->middleware(['auth:api'])->group(function () {
     Route::get('/', [CategoryController::class, 'index']);
@@ -161,16 +159,10 @@ Route::prefix('requests')->middleware(['auth:api'])->group(function () {
     Route::post('/{id}/add-service', [RequestController::class, 'addServiceToRequest']);
 });
 
-
 // landing page
 Route::prefix('landing')->group(function () {
     Route::get('/', [DashboardController::class, 'landing']);
     Route::get('/categories', [DashboardController::class, 'getCategoriesWithServices']);
     Route::get('/categories/{id}', [DashboardController::class, 'getCategoryWithServices']);
     Route::get('/services/{id}', [DashboardController::class, 'getServiceById']);
-
-
 });
-
-
-
