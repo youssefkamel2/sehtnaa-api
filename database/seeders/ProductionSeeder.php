@@ -344,66 +344,42 @@ class ProductionSeeder extends Seeder
         $requiredDocuments = [
             // Individual provider documents
             [
-                'name' => [
-                    'ar' => 'البطاقة الشخصية',
-                    'en' => 'National ID',
-                ],
+                'name' => 'National ID',
                 'provider_type' => 'individual',
             ],
             [
-                'name' => [
-                    'ar' => 'رخصة مزاولة المهنة',
-                    'en' => 'Practice License',
-                ],
+                'name' => 'Practice License',
                 'provider_type' => 'individual',
             ],
             [
-                'name' => [
-                    'ar' => 'شهادة التخرج',
-                    'en' => 'Graduation Certificate',
-                ],
+                'name' => 'Graduation Certificate',
                 'provider_type' => 'individual',
             ],
             [
-                'name' => [
-                    'ar' => 'شهادة خبرة',
-                    'en' => 'Experience Certificate',
-                ],
+                'name' => 'Experience Certificate',
                 'provider_type' => 'individual',
             ],
             // Organizational provider documents
             [
-                'name' => [
-                    'ar' => 'السجل التجاري',
-                    'en' => 'Commercial Registration',
-                ],
+                'name' => 'Commercial Registration',
                 'provider_type' => 'organizational',
             ],
             [
-                'name' => [
-                    'ar' => 'البطاقة الضريبية',
-                    'en' => 'Tax Card',
-                ],
+                'name' => 'Tax Card',
                 'provider_type' => 'organizational',
             ],
             [
-                'name' => [
-                    'ar' => 'رخصة مزاولة النشاط',
-                    'en' => 'Activity License',
-                ],
+                'name' => 'Activity License',
                 'provider_type' => 'organizational',
             ],
             [
-                'name' => [
-                    'ar' => 'عقد مقر الشركة',
-                    'en' => 'Company Headquarters Contract',
-                ],
+                'name' => 'Company Headquarters Contract',
                 'provider_type' => 'organizational',
             ],
         ];
         foreach ($requiredDocuments as $doc) {
             \App\Models\RequiredDocument::create([
-                'name' => json_encode($doc['name'], JSON_UNESCAPED_UNICODE),
+                'name' => $doc['name'],
                 'provider_type' => $doc['provider_type'],
             ]);
         }
