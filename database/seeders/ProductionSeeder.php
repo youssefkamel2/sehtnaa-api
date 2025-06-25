@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\RequiredDocument;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\Category;
@@ -338,6 +339,71 @@ class ProductionSeeder extends Seeder
                     ]);
                 }
             }
+        }
+
+        // Seed required documents for providers
+        $requiredDocuments = [
+            // Individual provider documents
+            [
+                'name' => [
+                    'ar' => 'البطاقة الشخصية',
+                    'en' => 'National ID',
+                ],
+                'provider_type' => 'individual',
+            ],
+            [
+                'name' => [
+                    'ar' => 'رخصة مزاولة المهنة',
+                    'en' => 'Practice License',
+                ],
+                'provider_type' => 'individual',
+            ],
+            [
+                'name' => [
+                    'ar' => 'شهادة التخرج',
+                    'en' => 'Graduation Certificate',
+                ],
+                'provider_type' => 'individual',
+            ],
+            [
+                'name' => [
+                    'ar' => 'شهادة خبرة',
+                    'en' => 'Experience Certificate',
+                ],
+                'provider_type' => 'individual',
+            ],
+            // Organizational provider documents
+            [
+                'name' => [
+                    'ar' => 'السجل التجاري',
+                    'en' => 'Commercial Registration',
+                ],
+                'provider_type' => 'organizational',
+            ],
+            [
+                'name' => [
+                    'ar' => 'البطاقة الضريبية',
+                    'en' => 'Tax Card',
+                ],
+                'provider_type' => 'organizational',
+            ],
+            [
+                'name' => [
+                    'ar' => 'رخصة مزاولة النشاط',
+                    'en' => 'Activity License',
+                ],
+                'provider_type' => 'organizational',
+            ],
+            [
+                'name' => [
+                    'ar' => 'عقد مقر الشركة',
+                    'en' => 'Company Headquarters Contract',
+                ],
+                'provider_type' => 'organizational',
+            ],
+        ];
+        foreach ($requiredDocuments as $doc) {
+            RequiredDocument::create($doc);
         }
     }
 } 
