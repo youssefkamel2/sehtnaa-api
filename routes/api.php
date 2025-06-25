@@ -113,7 +113,6 @@ Route::prefix('admin')->middleware(['auth:api', 'role:admin', 'check.status'])->
     });
 });
 
-
 Route::prefix('user')->middleware(['auth:api'])->group(function () {
 
     Route::post('/update-profile', [UserController::class, 'updateProfile']);

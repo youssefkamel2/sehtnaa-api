@@ -27,7 +27,12 @@ class AuthController extends Controller
             'first_name' => 'required|string',
             'last_name' => 'required|string',
             'email' => 'required|email|unique:users',
-            'phone' => 'required|string|unique:users',
+            'phone' => [
+                'required',
+                'string',
+                'unique:users',
+                'regex:/^01[0125][0-9]{8}$/'
+            ],
             'password' => 'required|string|min:6|confirmed',
             'user_type' => 'required|in:customer,provider',
             'address' => 'required_if:user_type,customer,provider|string',
@@ -49,6 +54,7 @@ class AuthController extends Controller
                 },
             ],
         ], [
+            'phone.regex' => 'The phone number must be a valid Egyptian mobile number.',
             'nid.required_if' => 'The national ID is required for individual providers',
             'nid.unique' => 'This national ID is already registered',
             'nid.digits' => 'The national ID must be exactly 14 digits',
