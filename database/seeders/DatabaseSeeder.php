@@ -20,9 +20,10 @@ class DatabaseSeeder extends Seeder
         // ]);
         self::call([
             UsersTableSeeder::class,
-            CategoriesTableSeeder::class,
-            ServicesTableSeeder::class,
+            // CategoriesTableSeeder::class,
+            // ServicesTableSeeder::class,
             // RequestsTableSeeder::class,
+            ProductionSeeder::class,
         ]);
     }
 }

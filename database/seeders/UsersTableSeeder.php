@@ -47,8 +47,7 @@ class UsersTableSeeder extends Seeder
 
         // Create Customer record
         Customer::create([
-            'user_id' => $customerUser->id,
-            'additional_info' => null
+            'user_id' => $customerUser->id
         ]);
 
         // Create Individual Provider User
