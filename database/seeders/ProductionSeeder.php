@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\RequiredDocument;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\Category;
@@ -403,7 +402,10 @@ class ProductionSeeder extends Seeder
             ],
         ];
         foreach ($requiredDocuments as $doc) {
-            RequiredDocument::create($doc);
+            \App\Models\RequiredDocument::create([
+                'name' => json_encode($doc['name'], JSON_UNESCAPED_UNICODE),
+                'provider_type' => $doc['provider_type'],
+            ]);
         }
     }
 } 
