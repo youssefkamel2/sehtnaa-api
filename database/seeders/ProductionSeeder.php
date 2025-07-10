@@ -17,6 +17,14 @@ class ProductionSeeder extends Seeder
             throw new \Exception('Super admin user not found. Please seed users first.');
         }
 
+        // Truncate relevant tables (but NOT users)
+        \DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        \DB::table('service_requirements')->truncate();
+        \DB::table('services')->truncate();
+        \DB::table('categories')->truncate();
+        \DB::table('required_documents')->truncate();
+        \DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
         // Categories and their services
         $categories = [
             [
