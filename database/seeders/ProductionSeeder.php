@@ -302,7 +302,7 @@ class ProductionSeeder extends Seeder
                     'description' => [ 'ar' => $srvData['desc_ar'], 'en' => $srvData['desc_en'] ],
                     'provider_type' => $srvData['provider_type'],
                     'price' => $srvData['price'],
-                    'icon' => 'service_icons/default.png',
+                    'icon' => 'service_icons/Mvg50P7208wFNENwZs2d0hX4u6fH7N7HvYByDqUo.png',
                     'cover_photo' => 'service_covers/default.png',
                     'category_id' => $category->id,
                     'is_active' => true,
