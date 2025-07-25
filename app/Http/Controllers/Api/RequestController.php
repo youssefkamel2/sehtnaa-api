@@ -124,47 +124,51 @@ class RequestController extends Controller
             // Get requirements for all services
             $serviceRequirements = ServiceRequirement::whereIn('service_id', $serviceIds)->get();
 
-            // Prepare validation rules for requirements
-            $requirementRules = [];
-            if ($serviceRequirements->count() > 0) {
-                $requirementRules['requirements'] = 'required|array';
-            }
+            // if the category is multiple, we can skip requirement validation
+            if (!$category->is_multiple) {
 
-            // Custom validation for each requirement
-            $validator = Validator::make($request->all(), $requirementRules, [
-                'requirements.required' => 'All service requirements must be provided'
-            ]);
+                // Prepare validation rules for requirements
+                $requirementRules = [];
+                if ($serviceRequirements->count() > 0) {
+                    $requirementRules['requirements'] = 'required|array';
+                }
 
-            // Validate individual requirements
-            if ($serviceRequirements->count() > 0) {
-                foreach ($request->requirements as $index => $requirement) {
-                    if (!is_array($requirement)) {
-                        $validator->errors()->add("requirements.$index", 'Invalid requirement format');
-                        continue;
-                    }
+                // Custom validation for each requirement
+                $validator = Validator::make($request->all(), $requirementRules, [
+                    'requirements.required' => 'All service requirements must be provided'
+                ]);
 
-                    $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
-
-                    if (!$serviceRequirement) {
-                        $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
-                        continue;
-                    }
-
-                    if ($serviceRequirement->type === 'file') {
-                        $fileKey = 'file_' . $requirement['requirement_id'];
-                        if (!$request->hasFile($fileKey)) {
-                            $validator->errors()->add("requirements.$index", 'File upload is required for this requirement');
+                // Validate individual requirements
+                if ($serviceRequirements->count() > 0) {
+                    foreach ($request->requirements as $index => $requirement) {
+                        if (!is_array($requirement)) {
+                            $validator->errors()->add("requirements.$index", 'Invalid requirement format');
+                            continue;
                         }
-                    } else {
-                        if (!isset($requirement['value']) || empty(trim($requirement['value'] ?? ''))) {
-                            $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
+
+                        $serviceRequirement = ServiceRequirement::find($requirement['requirement_id'] ?? null);
+
+                        if (!$serviceRequirement) {
+                            $validator->errors()->add("requirements.$index", 'Invalid requirement ID');
+                            continue;
+                        }
+
+                        if ($serviceRequirement->type === 'file') {
+                            $fileKey = 'file_' . $requirement['requirement_id'];
+                            if (!$request->hasFile($fileKey)) {
+                                $validator->errors()->add("requirements.$index", 'File upload is required for this requirement');
+                            }
+                        } else {
+                            if (!isset($requirement['value']) || empty(trim($requirement['value'] ?? ''))) {
+                                $validator->errors()->add("requirements.$index", 'Value is required for this requirement');
+                            }
                         }
                     }
                 }
-            }
 
-            if ($validator->fails()) {
-                return $this->error($validator->errors()->first(), 422);
+                if ($validator->fails()) {
+                    return $this->error($validator->errors()->first(), 422);
+                }
             }
 
             DB::beginTransaction();
