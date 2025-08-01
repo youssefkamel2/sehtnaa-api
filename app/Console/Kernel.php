@@ -62,8 +62,16 @@ class Kernel extends ConsoleKernel
         // Retry failed jobs
         $schedule->call(function () {
             try {
-                \Artisan::call('queue:retry', ['all' => true]);
-                LogService::scheduler('info', 'Failed jobs retry completed');
+                // Get all failed job IDs and retry them
+                $failedJobs = \DB::table('failed_jobs')->pluck('id')->toArray();
+                if (!empty($failedJobs)) {
+                    foreach ($failedJobs as $jobId) {
+                        \Artisan::call('queue:retry', ['id' => $jobId]);
+                    }
+                    LogService::scheduler('info', 'Failed jobs retry completed', [
+                        'retried_count' => count($failedJobs)
+                    ]);
+                }
             } catch (\Exception $e) {
                 LogService::exception($e, [
                     'action' => 'failed_jobs_retry'
