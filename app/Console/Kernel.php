@@ -104,6 +104,18 @@ class Kernel extends ConsoleKernel
                 ]);
             }
         })->daily()->name('cleanup-exports');
+
+        // Clean up invalid FCM tokens
+        $schedule->call(function () {
+            try {
+                \Artisan::call('notifications:cleanup-tokens', ['--force' => true]);
+                LogService::scheduler('info', 'Invalid FCM tokens cleanup completed');
+            } catch (\Exception $e) {
+                LogService::exception($e, [
+                    'action' => 'invalid_token_cleanup'
+                ]);
+            }
+        })->daily()->name('cleanup-invalid-tokens');
     }
 
     /**

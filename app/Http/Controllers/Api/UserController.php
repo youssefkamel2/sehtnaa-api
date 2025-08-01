@@ -341,16 +341,33 @@ class UserController extends Controller
 
     private function determineCampaignStatus($campaign)
     {
+        // If all notifications failed (including invalid tokens)
         if ($campaign->failed_count == $campaign->total_notifications) {
             return 'failed';
-        } elseif ($campaign->sent_count == $campaign->total_notifications) {
+        }
+
+        // If all notifications were sent successfully
+        if ($campaign->sent_count == $campaign->total_notifications) {
             return 'success';
-        } elseif ($campaign->pending_count > 0) {
+        }
+
+        // If there are still pending notifications (not reached max attempts)
+        if ($campaign->pending_count > 0) {
             return 'processing';
-        } elseif ($campaign->sent_count > 0) {
+        }
+
+        // If some were sent but some failed (partial success)
+        if ($campaign->sent_count > 0 && $campaign->failed_count > 0) {
             return 'partial_success';
         }
-        return 'queued';
+
+        // If no notifications have been processed yet
+        if ($campaign->sent_count == 0 && $campaign->failed_count == 0) {
+            return 'queued';
+        }
+
+        // Default fallback
+        return 'processing';
     }
 
     // public function getCampaignStatus($campaignId)
