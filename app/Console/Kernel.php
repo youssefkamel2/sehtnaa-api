@@ -27,7 +27,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'queue_processing'
                 ]);
             }
-        })->everyMinute()->withoutOverlapping();
+        })->everyMinute()->name('request-expansion-queue')->withoutOverlapping();
 
         // Process general queue
         $schedule->call(function () {
@@ -41,7 +41,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'queue_processing'
                 ]);
             }
-        })->everyMinute()->withoutOverlapping();
+        })->everyMinute()->name('general-queue')->withoutOverlapping();
 
         // Retry failed jobs
         $schedule->call(function () {
@@ -53,7 +53,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'failed_jobs_retry'
                 ]);
             }
-        })->hourly();
+        })->hourly()->name('retry-failed-jobs');
 
         // Prune Telescope logs (if Telescope is enabled)
         if (class_exists('\Laravel\Telescope\Telescope')) {
@@ -66,7 +66,7 @@ class Kernel extends ConsoleKernel
                         'action' => 'telescope_pruning'
                     ]);
                 }
-            })->daily();
+            })->daily()->name('prune-telescope');
         }
 
         // Prune Activity Log
@@ -79,7 +79,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'activity_log_pruning'
                 ]);
             }
-        })->daily();
+        })->daily()->name('prune-activity-log');
 
         // Clean up old log files
         $schedule->call(function () {
@@ -91,7 +91,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'log_cleanup'
                 ]);
             }
-        })->weekly();
+        })->weekly()->name('cleanup-logs');
 
         // Clean up old export files
         $schedule->call(function () {
@@ -103,7 +103,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'export_cleanup'
                 ]);
             }
-        })->daily();
+        })->daily()->name('cleanup-exports');
     }
 
     /**

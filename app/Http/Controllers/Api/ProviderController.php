@@ -818,8 +818,7 @@ class ProviderController extends Controller
                 'response' => $response
             ]);
 
-
-            Log::info('Provider activated', ['provider_id' => $provider->id]);
+            LogService::info('Provider activated', ['provider_id' => $provider->id]);
         }
     }
 
