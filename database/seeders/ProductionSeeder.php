@@ -12,7 +12,7 @@ class ProductionSeeder extends Seeder
 {
     public function run()
     {
-        $admin = User::where('email', 'superadmin@example.com')->first();
+        $admin = User::where('email', 'support@sehtnaa.com')->first();
         if (!$admin) {
             throw new \Exception('Super admin user not found. Please seed users first.');
         }
