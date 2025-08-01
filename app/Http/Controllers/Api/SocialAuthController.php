@@ -56,12 +56,13 @@ class SocialAuthController extends Controller
                 $socialUser = $driver->userFromToken($accessToken);
             } elseif ($provider === 'facebook') {
                 // Facebook-specific flow
-                $accessToken = $driver->getAccessToken($code);
+                $response = $driver->getAccessTokenResponse($code);
+                $accessToken = $response['access_token'];
                 $socialUser = $driver->userFromToken($accessToken);
+                
+                // Additional Facebook token validation
+                $this->validateFacebookToken($accessToken);
             }
-    
-            // Validate token with provider
-            // $this->validateProviderToken($provider, $accessToken);
     
             // Find or create user
             $user = $this->findOrCreateUser($provider, $socialUser);
@@ -83,28 +84,26 @@ class SocialAuthController extends Controller
         }
     }
     
-    private function validateProviderToken($provider, $token)
+    private function validateFacebookToken($accessToken)
     {
-        if ($provider === 'google') {
-            $client = new \Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
-            $payload = $client->verifyIdToken($token);
+        $fb = new \Facebook\Facebook([
+            'app_id' => env('FACEBOOK_CLIENT_ID'),
+            'app_secret' => env('FACEBOOK_CLIENT_SECRET'),
+            'default_graph_version' => 'v12.0',
+        ]);
+        
+        try {
+            // Verify the token is valid
+            $response = $fb->get('/me?fields=id,name,email', $accessToken);
             
-            if (!$payload || $payload['aud'] !== env('GOOGLE_CLIENT_ID')) {
-                throw new Exception('Invalid Google token');
+            // Additional validation if needed
+            $userNode = $response->getGraphUser();
+            if (!$userNode->getId()) {
+                throw new Exception('Invalid Facebook user ID');
             }
-        }
-        elseif ($provider === 'facebook') {
-            $fb = new \Facebook\Facebook([
-                'app_id' => env('FACEBOOK_CLIENT_ID'),
-                'app_secret' => env('FACEBOOK_CLIENT_SECRET'),
-                'default_graph_version' => 'v12.0',
-            ]);
             
-            try {
-                $response = $fb->get('/me?fields=id,name,email', $token);
-            } catch (Exception $e) {
-                throw new Exception('Invalid Facebook token');
-            }
+        } catch (Exception $e) {
+            throw new Exception('Invalid Facebook token: ' . $e->getMessage());
         }
     }
 
