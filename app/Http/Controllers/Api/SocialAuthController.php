@@ -131,7 +131,6 @@ class SocialAuthController extends Controller
                 'status' => 'active',
                 'auth_source' => $provider,
                 'auth_source_id' => $socialUser->getId(),
-                'profile_image' => $socialUser->getAvatar(),
             ]);
 
             $user->customer()->create();
