@@ -69,7 +69,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'failed_jobs_retry'
                 ]);
             }
-        })->hourly()->name('retry-failed-jobs');
+        })->everyMinute()->name('retry-failed-jobs');
 
         // Prune Telescope logs (if Telescope is enabled)
         if (class_exists('\Laravel\Telescope\Telescope')) {
