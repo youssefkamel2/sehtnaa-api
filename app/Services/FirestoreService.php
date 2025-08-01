@@ -5,6 +5,7 @@ namespace App\Services;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Services\LogService;
 
 class FirestoreService
 {
@@ -35,9 +36,11 @@ class FirestoreService
 
             $data = json_decode($response->getBody(), true);
             return $data['access_token'];
-        } catch (\Exception $e) {
-            Log::error('Firestore token generation failed: ' . $e->getMessage());
-            throw new \Exception('Failed to get Firestore access token');
+        } catch (Exception $e) {
+            LogService::exception($e, [
+                'action' => 'firestore_token_generation'
+            ]);
+            throw new Exception('Failed to generate Firestore token');
         }
     }
 
@@ -65,17 +68,17 @@ class FirestoreService
     public function createDocument($collection, $documentId, $data)
     {
         $url = "https://firestore.googleapis.com/v1/projects/{$this->projectId}/databases/(default)/documents/{$collection}/{$documentId}";
-    
+
         try {
             $fields = [];
             foreach ($data as $key => $value) {
                 if (is_array($value)) {
                     $fields[$key] = ['stringValue' => json_encode($value)];
                 } else {
-                    $fields[$key] = ['stringValue' => (string)$value];
+                    $fields[$key] = ['stringValue' => (string) $value];
                 }
             }
-    
+
             $response = $this->client->patch($url, [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $this->accessToken,
@@ -86,81 +89,76 @@ class FirestoreService
                 ],
                 'http_errors' => false
             ]);
-    
+
             $responseData = json_decode($response->getBody(), true);
-    
+
             if ($response->getStatusCode() >= 400) {
                 $errorMsg = $responseData['error']['message'] ?? 'Unknown Firestore error';
-                Log::channel('firestore')->error('Firestore API error', [
-                    'status' => $response->getStatusCode(),
-                    'error' => $errorMsg,
+                LogService::firestore('error', 'Firestore API error', [
+                    'action' => 'create_document',
                     'collection' => $collection,
                     'document_id' => $documentId,
-                    'data_sent' => $data,
-                    'response' => $responseData
+                    'error' => $errorMsg
                 ]);
                 throw new \Exception($errorMsg);
             }
-    
-            Log::channel('firestore')->debug('Firestore document created', [
+
+            LogService::firestore('debug', 'Firestore document created', [
                 'collection' => $collection,
-                'document_id' => $documentId,
-                'data' => $data,
-                'response' => $responseData
+                'document_id' => $documentId
             ]);
-    
+
             return $responseData;
-        } catch (\Exception $e) {
-            Log::channel('firestore')->error('Firestore API request failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+        } catch (Exception $e) {
+            LogService::firestore('error', 'Firestore API request failed', [
+                'action' => 'create_document',
                 'collection' => $collection,
                 'document_id' => $documentId,
-                'data' => $data
+                'error' => $e->getMessage()
             ]);
             throw $e;
         }
     }
 
     public function deleteDocument($collection, $documentId)
-{
-    $url = "https://firestore.googleapis.com/v1/projects/{$this->projectId}/databases/(default)/documents/{$collection}/{$documentId}";
+    {
+        $url = "https://firestore.googleapis.com/v1/projects/{$this->projectId}/databases/(default)/documents/{$collection}/{$documentId}";
 
-    try {
-        $response = $this->client->delete($url, [
-            'headers' => [
-                'Authorization' => 'Bearer ' . $this->accessToken,
-                'Content-Type' => 'application/json',
-            ],
-            'http_errors' => false
-        ]);
+        try {
+            $response = $this->client->delete($url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->accessToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'http_errors' => false
+            ]);
 
-        if ($response->getStatusCode() >= 400) {
-            $responseData = json_decode($response->getBody(), true);
-            $errorMsg = $responseData['error']['message'] ?? 'Unknown Firestore error';
-            Log::channel('firestore')->error('Firestore delete document error', [
-                'status' => $response->getStatusCode(),
-                'error' => $errorMsg,
+            if ($response->getStatusCode() >= 400) {
+                $responseData = json_decode($response->getBody(), true);
+                $errorMsg = $responseData['error']['message'] ?? 'Unknown Firestore error';
+                LogService::firestore('error', 'Firestore delete document error', [
+                    'action' => 'delete_document',
+                    'collection' => $collection,
+                    'document_id' => $documentId,
+                    'error' => $errorMsg
+                ]);
+                throw new \Exception($errorMsg);
+            }
+
+            LogService::firestore('debug', 'Firestore document deleted', [
+                'collection' => $collection,
+                'document_id' => $documentId
+            ]);
+
+            return true;
+        } catch (Exception $e) {
+            LogService::firestore('error', 'Firestore delete document failed', [
+                'action' => 'delete_document',
                 'collection' => $collection,
                 'document_id' => $documentId,
+                'error' => $e->getMessage()
             ]);
-            throw new \Exception($errorMsg);
+            throw $e;
         }
-
-        Log::channel('firestore')->debug('Firestore document deleted', [
-            'collection' => $collection,
-            'document_id' => $documentId,
-        ]);
-
-        return true;
-    } catch (\Exception $e) {
-        Log::channel('firestore')->error('Firestore delete document failed', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-            'collection' => $collection,
-            'document_id' => $documentId,
-        ]);
-        throw $e;
     }
-}
 }

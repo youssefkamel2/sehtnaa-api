@@ -23,6 +23,7 @@ use App\Models\RequestCancellationLog;
 use App\Jobs\ExpandRequestSearchRadius;
 use App\Models\Request as ServiceRequest;
 use Illuminate\Support\Facades\Validator;
+use App\Services\LogService;
 
 class RequestController extends Controller
 {
@@ -243,7 +244,7 @@ class RequestController extends Controller
                         }
                     }
                 } else {
-                    Log::channel('request_expansion')->info('Scheduling request expansion job', [
+                    LogService::requests('info', 'Scheduling request expansion job', [
                         'request_id' => $serviceRequest->id,
                         'providers_notified' => $notifiedCount,
                     ]);
@@ -259,11 +260,17 @@ class RequestController extends Controller
                 ], 'Request created successfully');
             } catch (\Exception $e) {
                 DB::rollBack();
-                Log::error('Request creation failed: ' . $e->getMessage());
+                LogService::exception($e, [
+                    'action' => 'request_creation',
+                    'user_id' => $user->id
+                ]);
                 return $this->error('Failed to create request: ' . $e->getMessage(), 500);
             }
         } catch (\Exception $e) {
-            Log::error('Request processing failed: ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'request_processing',
+                'request_id' => $request->id
+            ]);
             return $this->error('Failed to process request: ' . $e->getMessage(), 500);
         }
     }
@@ -359,11 +366,17 @@ class RequestController extends Controller
                 ], 'Services added successfully');
             } catch (\Exception $e) {
                 DB::rollBack();
-                Log::error('Failed to add services to request: ' . $e->getMessage());
+                LogService::exception($e, [
+                    'action' => 'add_services_to_request',
+                    'request_id' => $request->id
+                ]);
                 return $this->error('Failed to add services to request: ' . $e->getMessage(), 500);
             }
         } catch (\Exception $e) {
-            Log::error('Request processing failed: ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'request_processing',
+                'request_id' => $request->id
+            ]);
             return $this->error('Failed to process request: ' . $e->getMessage(), 500);
         }
     }
@@ -372,9 +385,9 @@ class RequestController extends Controller
     {
         $provider = $serviceRequest->assignedProvider;
         if (!$provider || !$provider->user->fcm_token) {
-            Log::channel('fcm_errors')->error('Provider or FCM token not found', [
-                'provider_id' => $provider ? $provider->id : null,
+            LogService::fcmErrors('Provider or FCM token not found', [
                 'request_id' => $serviceRequest->id,
+                'provider_id' => $provider->id ?? null
             ]);
             return;
         }
@@ -393,7 +406,11 @@ class RequestController extends Controller
                 ]
             );
         } catch (\Exception $e) {
-            Log::error('Failed to notify provider about service addition: ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'notify_provider_service_addition',
+                'request_id' => $serviceRequest->id,
+                'provider_id' => $provider->id
+            ]);
         }
     }
 
@@ -585,11 +602,13 @@ class RequestController extends Controller
                 return $this->error('Unauthorized', 403);
             }
 
-            if ($user->user_type === 'provider' && (!$user->provider ||
-                ($request->assigned_provider_id !== $user->provider->id &&
-                    !RequestProvider::where('request_id', $id)
-                        ->where('provider_id', $user->provider->id)
-                        ->exists()))) {
+            if (
+                $user->user_type === 'provider' && (!$user->provider ||
+                    ($request->assigned_provider_id !== $user->provider->id &&
+                        !RequestProvider::where('request_id', $id)
+                            ->where('provider_id', $user->provider->id)
+                            ->exists()))
+            ) {
                 return $this->error('Unauthorized', 403);
             }
 
@@ -740,7 +759,8 @@ class RequestController extends Controller
             }
 
             // Verify user profile exists
-            if (($user->user_type === 'customer' && !$user->customer) ||
+            if (
+                ($user->user_type === 'customer' && !$user->customer) ||
                 ($user->user_type === 'provider' && !$user->provider)
             ) {
                 return $this->error('User profile not found', 404);
@@ -836,7 +856,11 @@ class RequestController extends Controller
             return $this->success(null, 'Request cancelled successfully');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to cancel request: ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'cancel_request',
+                'request_id' => $request->id,
+                'user_id' => $user->id
+            ]);
             return $this->error('Failed to cancel request: ' . $e->getMessage(), 500);
         }
     }
@@ -850,13 +874,13 @@ class RequestController extends Controller
                     (string) $serviceRequest->id
                 );
             }
-            Log::channel('firestore')->info('Request deleted from providers Firestore', [
+            LogService::firestore('info', 'Request deleted from providers Firestore', [
                 'request_id' => $serviceRequest->id,
                 'providers_count' => count($providerUserIds)
             ]);
             return true;
         } catch (\Exception $e) {
-            Log::channel('firestore')->debug('Failed to delete request from providers Firestore', [
+            LogService::firestore('debug', 'Failed to delete request from providers Firestore', [
                 'request_id' => $serviceRequest->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -993,7 +1017,7 @@ class RequestController extends Controller
     protected function sendNotification($token, $title, $body, $data = [])
     {
         if (empty($token)) {
-            Log::channel('fcm_errors')->warning('Attempted to send notification with empty token', [
+            LogService::fcmErrors('Attempted to send notification with empty token', [
                 'title' => $title,
                 'body' => $body
             ]);
@@ -1005,7 +1029,7 @@ class RequestController extends Controller
 
             if (!isset($response['success']) || $response['success'] === 0) {
                 $error = $response['results'][0]['error'] ?? 'Unknown FCM error';
-                Log::channel('fcm_errors')->error('FCM delivery failed', [
+                LogService::fcmErrors('FCM delivery failed', [
                     'token' => $token,
                     'error' => $error,
                     'title' => $title,
@@ -1017,7 +1041,7 @@ class RequestController extends Controller
 
             return $response;
         } catch (\Exception $e) {
-            Log::channel('fcm_errors')->error('FCM service error', [
+            LogService::fcmErrors('FCM service error', [
                 'token' => $token,
                 'error' => $e->getMessage(),
                 'title' => $title,

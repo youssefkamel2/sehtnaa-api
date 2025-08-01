@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Request as ServiceRequest;
 use Illuminate\Support\Facades\Validator;
+use App\Services\LogService;
 
 class ProviderController extends Controller
 {
@@ -125,7 +126,11 @@ class ProviderController extends Controller
             ], 'Request accepted successfully');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('ProviderController::acceptRequest - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'accept_request',
+                'request_id' => $requestId,
+                'provider_id' => $provider->id
+            ]);
             return $this->error('Failed to accept request: ' . $e->getMessage(), 500);
         }
     }
@@ -141,14 +146,14 @@ class ProviderController extends Controller
                 );
             }
 
-            Log::channel('firestore')->info('Request deleted from providers Firestore', [
+            LogService::firestore('info', 'Request deleted from providers Firestore', [
                 'request_id' => $serviceRequest->id,
                 'providers_count' => count($providerIds)
             ]);
 
             return true;
         } catch (\Exception $e) {
-            Log::channel('firestore_errors')->error('Failed to delete request from providers Firestore', [
+            LogService::firestore('error', 'Failed to delete request from providers Firestore', [
                 'request_id' => $serviceRequest->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -164,7 +169,7 @@ class ProviderController extends Controller
             $customer = $serviceRequest->customer->user;
 
             if (empty($customer->fcm_token)) {
-                Log::channel('fcm_errors')->warning('No FCM token for customer', [
+                LogService::fcmErrors('No FCM token for customer', [
                     'customer_id' => $customer->id,
                     'request_id' => $serviceRequest->id
                 ]);
@@ -190,7 +195,7 @@ class ProviderController extends Controller
                 throw new \Exception($response['results'][0]['error'] ?? 'Unknown FCM error');
             }
 
-            Log::channel('fcm_errors')->info('Request acceptance notification sent', [
+            LogService::notifications('info', 'Request acceptance notification sent', [
                 'request_id' => $serviceRequest->id,
                 'customer_id' => $customer->id,
                 'provider_id' => $provider->id,
@@ -199,7 +204,7 @@ class ProviderController extends Controller
 
             return true;
         } catch (\Exception $e) {
-            Log::channel('fcm_errors')->error('Failed to send request acceptance notification', [
+            LogService::fcmErrors('Failed to send request acceptance notification', [
                 'request_id' => $serviceRequest->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -246,7 +251,7 @@ class ProviderController extends Controller
                 $firestoreData
             );
 
-            Log::channel('firestore')->info('Request acceptance real-time update sent', [
+            LogService::firestore('info', 'Request acceptance real-time update sent', [
                 'request_id' => $serviceRequest->id,
                 'customer_id' => $customerId,
                 'data' => $firestoreData,
@@ -255,7 +260,7 @@ class ProviderController extends Controller
 
             return true;
         } catch (\Exception $e) {
-            Log::channel('firestore_errors')->error('Failed to send real-time acceptance update', [
+            LogService::firestore('error', 'Failed to send real-time acceptance update', [
                 'request_id' => $serviceRequest->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -338,7 +343,11 @@ class ProviderController extends Controller
             ], 'Request marked as completed successfully');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('ProviderController::completeRequest - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'complete_request',
+                'request_id' => $requestId,
+                'provider_id' => $provider->id
+            ]);
             return $this->error('Failed to complete request: ' . $e->getMessage(), 500);
         }
     }
@@ -348,7 +357,7 @@ class ProviderController extends Controller
             $customer = $serviceRequest->customer->user;
 
             if (empty($customer->fcm_token)) {
-                Log::channel('fcm_errors')->error('No FCM token for customer', [
+                LogService::fcmErrors('No FCM token for customer', [
                     'customer_id' => $customer->id,
                     'request_id' => $serviceRequest->id
                 ]);
@@ -374,7 +383,7 @@ class ProviderController extends Controller
                 throw new \Exception($response['results'][0]['error'] ?? 'Unknown FCM error');
             }
 
-            Log::channel('fcm_debug')->debug('Request completion notification sent', [
+            LogService::notifications('debug', 'Request completion notification sent', [
                 'request_id' => $serviceRequest->id,
                 'customer_id' => $customer->id,
                 'provider_id' => $provider->id,
@@ -383,7 +392,7 @@ class ProviderController extends Controller
 
             return true;
         } catch (\Exception $e) {
-            Log::channel('fcm_errors')->error('Failed to send request completion notification', [
+            LogService::fcmErrors('Failed to send request completion notification', [
                 'request_id' => $serviceRequest->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -436,13 +445,16 @@ class ProviderController extends Controller
             DB::commit();
 
             return $this->success([
-                'is_available' => (bool)$user->provider->is_available,
+                'is_available' => (bool) $user->provider->is_available,
                 'latitude' => $user->latitude,
                 'longitude' => $user->longitude
             ], 'Provider availability updated successfully');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('ProviderController::setAvailability - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'set_availability',
+                'provider_id' => $user->provider->id
+            ]);
             return $this->error('Failed to update provider availability: ' . $e->getMessage(), 500);
         }
     }
@@ -462,7 +474,9 @@ class ProviderController extends Controller
                 'organizational' => $providers->get('organizational', [])
             ], 'Providers retrieved successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::getAllProviders - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'get_all_providers'
+            ]);
             return $this->error('Failed to retrieve providers. Please try again later.', 500);
         }
     }
@@ -495,7 +509,10 @@ class ProviderController extends Controller
                 'status' => $request->status
             ], 'Provider status updated successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::changeStatus - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'change_status',
+                'provider_id' => $request->provider_id
+            ]);
             return $this->error('Failed to update provider status', 500);
         }
     }
@@ -510,14 +527,18 @@ class ProviderController extends Controller
             ]);
 
             if ($validator->fails()) {
-                Log::warning('Document upload validation failed', ['errors' => $validator->errors()]);
+                LogService::warning('Document upload validation failed', [
+                    'errors' => $validator->errors()
+                ]);
                 return $this->error($validator->errors()->first(), 400);
             }
 
             $user = User::where('email', $request->email)->firstOrFail();
 
             if (!$user->provider) {
-                Log::warning('Provider not found for user', ['user_id' => $user->id]);
+                LogService::warning('Provider not found for user', [
+                    'user_id' => $user->id
+                ]);
                 return $this->error('Provider account not found.', 404);
             }
 
@@ -525,7 +546,7 @@ class ProviderController extends Controller
             $requiredDocument = RequiredDocument::findOrFail($request->required_document_id);
 
             if ($requiredDocument->provider_type !== $provider->provider_type) {
-                Log::warning('Document type mismatch', [
+                LogService::warning('Document type mismatch', [
                     'required_type' => $requiredDocument->provider_type,
                     'provider_type' => $provider->provider_type
                 ]);
@@ -557,14 +578,18 @@ class ProviderController extends Controller
                 ]
             );
 
-            Log::info('Document uploaded successfully', [
+            LogService::info('Document uploaded successfully', [
                 'provider_id' => $provider->id,
                 'document_id' => $requiredDocument->id
             ]);
 
             return $this->success(null, 'Document uploaded successfully. Waiting for admin approval.');
         } catch (\Exception $e) {
-            Log::error('ProviderController::uploadDocument - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'upload_document',
+                'provider_id' => $provider->id ?? null,
+                'document_type' => $request->required_document_id ?? null
+            ]);
             return $this->error('Failed to upload document. Please try again.', 500);
         }
     }
@@ -592,7 +617,10 @@ class ProviderController extends Controller
 
             return $this->success($documents, 'Documents retrieved successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::listDocuments - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'list_documents',
+                'provider_id' => $user->provider->id
+            ]);
             return $this->error('Failed to retrieve documents. Please try again.', 500);
         }
     }
@@ -621,7 +649,9 @@ class ProviderController extends Controller
             $response = $this->calculateDocumentStatus($requiredDocuments, $uploadedDocuments);
             return $this->success($response, 'Document status retrieved successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::documentStatus - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'document_status'
+            ]);
             return $this->error('Failed to retrieve document status. Please try again.', 500);
         }
     }
@@ -657,7 +687,10 @@ class ProviderController extends Controller
                 'Remaining required documents retrieved successfully'
             );
         } catch (\Exception $e) {
-            Log::error('ProviderController::getRequiredDocuments - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'get_required_documents',
+                'provider_id' => $user->provider->id
+            ]);
             return $this->error('Failed to retrieve required documents. Please try again.', 500);
         }
     }
@@ -693,7 +726,10 @@ class ProviderController extends Controller
             return $this->success(null, 'Document approved successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('ProviderController::approveDocument - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'approve_document',
+                'document_id' => $request->document_id
+            ]);
             return $this->error('Failed to approve document', 500);
         }
     }
@@ -725,7 +761,10 @@ class ProviderController extends Controller
 
             return $this->success(null, 'Document rejected successfully.');
         } catch (\Exception $e) {
-            Log::error('ProviderController::rejectDocument - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'reject_document',
+                'document_id' => $request->document_id
+            ]);
             return $this->error('Failed to reject document', 500);
         }
     }
@@ -758,7 +797,7 @@ class ProviderController extends Controller
 
             // send notification
             if (empty($provider->user->fcm_token)) {
-                Log::channel('fcm_errors')->warning('No FCM token for provider', [
+                LogService::fcmErrors('No FCM token for provider', [
                     'provider_id' => $provider->id
                 ]);
                 return false;
@@ -774,7 +813,7 @@ class ProviderController extends Controller
                 throw new \Exception($response['results'][0]['error'] ?? 'Unknown FCM error');
             }
 
-            Log::channel('fcm_errors')->info('Request acceptance notification sent', [
+            LogService::notifications('info', 'Request acceptance notification sent', [
                 'provider_id' => $provider->id,
                 'response' => $response
             ]);
@@ -790,7 +829,9 @@ class ProviderController extends Controller
             $documents = RequiredDocument::all();
             return $this->success($documents, 'Required documents retrieved successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::getAllRequiredDocuments - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'get_all_required_documents'
+            ]);
             return $this->error('Failed to retrieve required documents', 500);
         }
     }
@@ -832,7 +873,10 @@ class ProviderController extends Controller
 
             return $this->success($document, 'Required document updated successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::updateRequiredDocument - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'update_required_document',
+                'document_id' => $id
+            ]);
             return $this->error('Failed to update required document', 500);
         }
     }
@@ -856,7 +900,10 @@ class ProviderController extends Controller
 
             return $this->success(null, 'Required document deleted successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::deleteRequiredDocument - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'delete_required_document',
+                'document_id' => $id
+            ]);
             return $this->error('Failed to delete required document', 500);
         }
     }
@@ -915,9 +962,12 @@ class ProviderController extends Controller
             ];
 
             if ($uploadedDoc) {
-                if ($uploadedDoc->status === 'rejected') $hasRejected = true;
-                if ($uploadedDoc->status === 'pending') $hasPending = true;
-                if ($uploadedDoc->status === 'approved') $approvedCount++;
+                if ($uploadedDoc->status === 'rejected')
+                    $hasRejected = true;
+                if ($uploadedDoc->status === 'pending')
+                    $hasPending = true;
+                if ($uploadedDoc->status === 'approved')
+                    $approvedCount++;
             } else {
                 $allUploaded = false;
             }
@@ -949,9 +999,12 @@ class ProviderController extends Controller
      */
     protected function determineAccountStatus($hasRejected, $hasPending, $allUploaded, $approvedCount, $totalRequired)
     {
-        if ($hasRejected) return 'rejected';
-        if ($hasPending || !$allUploaded) return 'pending';
-        if ($approvedCount === $totalRequired) return 'approved';
+        if ($hasRejected)
+            return 'rejected';
+        if ($hasPending || !$allUploaded)
+            return 'pending';
+        if ($approvedCount === $totalRequired)
+            return 'approved';
         return 'pending';
     }
 
@@ -1021,6 +1074,9 @@ class ProviderController extends Controller
                 'feedbacks' => $feedbacks
             ], 'Provider feedbacks retrieved successfully');
         } catch (\Exception $e) {
+            LogService::exception($e, [
+                'action' => 'get_provider_feedbacks'
+            ]);
             return $this->error('Failed to retrieve provider feedbacks: ' . $e->getMessage(), 500);
         }
     }
@@ -1102,7 +1158,9 @@ class ProviderController extends Controller
                 'complaints' => $complaints->values() // Reset keys after filter
             ], 'Provider complaints retrieved successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::getProviderComplaints - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'get_provider_complaints'
+            ]);
             return $this->error('Failed to retrieve provider complaints: ' . $e->getMessage(), 500);
         }
     }
@@ -1131,12 +1189,12 @@ class ProviderController extends Controller
 
             // Helper function to ensure double format
             $toDouble = function ($value) {
-                return is_numeric($value) ? (float)number_format((float)$value, 1, '.', '') : $value;
+                return is_numeric($value) ? (float) number_format((float) $value, 1, '.', '') : $value;
             };
 
             // Helper function to convert to integer
             $toInt = function ($value) {
-                return is_numeric($value) ? (int)$value : $value;
+                return is_numeric($value) ? (int) $value : $value;
             };
 
             // 1. Request Statistics
@@ -1195,7 +1253,7 @@ class ProviderController extends Controller
                     ->orderBy('rating', 'desc')
                     ->get()
                     ->mapWithKeys(function ($item) use ($toDouble) {
-                        return [(string)$item->rating => $toDouble($item->count)];
+                        return [(string) $item->rating => $toDouble($item->count)];
                     }),
             ];
 
@@ -1234,7 +1292,9 @@ class ProviderController extends Controller
                 'performance_metrics' => $performanceMetrics,
             ], 'Provider analytics retrieved successfully');
         } catch (\Exception $e) {
-            Log::error('ProviderController::getProviderAnalytics - ' . $e->getMessage());
+            LogService::exception($e, [
+                'action' => 'get_provider_analytics'
+            ]);
             return $this->error('Failed to retrieve provider analytics: ' . $e->getMessage(), 500);
         }
     }
@@ -1258,7 +1318,7 @@ class ProviderController extends Controller
             return $request->started_at->diffInMinutes($request->completed_at);
         });
 
-        return (int)($totalMinutes / $completedRequests->count());
+        return (int) ($totalMinutes / $completedRequests->count());
     }
 
     /**
@@ -1275,7 +1335,7 @@ class ProviderController extends Controller
             return 0;
         }
 
-        return (int)(($completed / $totalAssigned) * 100);
+        return (int) (($completed / $totalAssigned) * 100);
     }
 
     /**
@@ -1292,6 +1352,6 @@ class ProviderController extends Controller
             return 0;
         }
 
-        return (int)(($cancelled / $totalAssigned) * 100);
+        return (int) (($cancelled / $totalAssigned) * 100);
     }
 }

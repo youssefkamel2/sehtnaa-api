@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\RateLimiter;
 use App\Notifications\ResetCodeNotification;
 use Spatie\Activitylog\Models\Activity;
+use App\Services\LogService;
 
 class ResetPasswordController extends Controller
 {
@@ -23,8 +24,10 @@ class ResetPasswordController extends Controller
     public function sendCode(Request $request)
     {
         // Rate limiting: 5 attempts per minute
-        if (RateLimiter::tooManyAttempts('send-reset-code:' . $request->ip(), 5)) {
-            Log::warning('Rate limit exceeded for sending reset code.', ['ip' => $request->ip()]);
+        if ($this->hasTooManyAttempts($request, 'send_reset_code')) {
+            LogService::auth('warning', 'Rate limit exceeded for sending reset code', [
+                'ip' => $request->ip()
+            ]);
             return $this->error('Too many attempts. Please try again later.', 429);
         }
 
@@ -88,8 +91,10 @@ class ResetPasswordController extends Controller
     public function verifyCode(Request $request)
     {
         // Rate limiting: 5 attempts per minute
-        if (RateLimiter::tooManyAttempts('verify-reset-code:' . $request->ip(), 5)) {
-            Log::warning('Rate limit exceeded for verifying reset code.', ['ip' => $request->ip()]);
+        if ($this->hasTooManyAttempts($request, 'verify_reset_code')) {
+            LogService::auth('warning', 'Rate limit exceeded for verifying reset code', [
+                'ip' => $request->ip()
+            ]);
             return $this->error('Too many attempts. Please try again later.', 429);
         }
 
@@ -158,8 +163,10 @@ class ResetPasswordController extends Controller
     public function resetPassword(Request $request)
     {
         // Rate limiting: 5 attempts per minute
-        if (RateLimiter::tooManyAttempts('reset-password:' . $request->ip(), 5)) {
-            Log::warning('Rate limit exceeded for resetting password.', ['ip' => $request->ip()]);
+        if ($this->hasTooManyAttempts($request, 'reset_password')) {
+            LogService::auth('warning', 'Rate limit exceeded for resetting password', [
+                'ip' => $request->ip()
+            ]);
             return $this->error('Too many attempts. Please try again later.', 429);
         }
 

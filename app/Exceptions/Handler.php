@@ -7,12 +7,12 @@ use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
-use Illuminate\Support\Facades\Log; // Import the Log facade
-use App\Traits\ResponseTrait; // Use the ResponseTrait
+use App\Services\LogService;
+use App\Traits\ResponseTrait;
 
 class Handler extends ExceptionHandler
 {
-    use ResponseTrait; // Include the response trait
+    use ResponseTrait;
 
     /**
      * A list of exception types with their corresponding custom log levels.
@@ -49,35 +49,43 @@ class Handler extends ExceptionHandler
     public function register(): void
     {
         $this->reportable(function (Throwable $e) {
-            // Log the exception details with its code
-            Log::error($e->getMessage(), ['exception' => $e, 'code' => $e->getCode()]);
+            // Use LogService for production-safe logging
+            LogService::exception($e, [
+                'request_path' => request()->path(),
+                'request_method' => request()->method(),
+                'user_id' => auth()->id(),
+            ]);
         });
     }
 
     protected function unauthenticated($request, AuthenticationException $exception)
     {
+        LogService::auth('warning', 'Unauthorized API access attempt', [
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'attempted_route' => $request->path(),
+            'auth_header' => $request->header('Authorization') ? '[PRESENT]' : '[MISSING]',
+        ]);
+
         activity()
             ->withProperties([
                 'ip' => $request->ip(),
                 'user_agent' => $request->userAgent(),
                 'attempted_route' => $request->path(),
-                'auth_header' => $request->header('Authorization'),
-                'other_headers' => collect($request->headers->all())
-                    ->except(['cookie'])
-                    ->toArray(),
+                'auth_header' => $request->header('Authorization') ? '[PRESENT]' : '[MISSING]',
             ])
             ->log('Unauthorized API access attempt');
+
         return $this->error('Unauthorized access. Please log in.', 401);
     }
 
-    public function render($request, Throwable $exception) // Change Exception to Throwable
+    public function render($request, Throwable $exception)
     {
-
         // Default response for unexpected exceptions
         $response = [
             'success' => false,
-            'message' => 'An error occurred. Please try again later.' . $exception->getMessage(),
-            'code' => 500 // Default error code
+            'message' => 'An error occurred. Please try again later.',
+            'code' => 500
         ];
 
         // Check for specific exceptions and set the appropriate response
@@ -101,6 +109,4 @@ class Handler extends ExceptionHandler
         // If it's a generic server error, respond with 500
         return $this->error($response['message'], 500);
     }
-
-    
 }

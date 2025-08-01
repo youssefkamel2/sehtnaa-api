@@ -22,6 +22,7 @@ use App\Exports\ProvidersAnalyticsExport;
 use App\Models\Request as ServiceRequest;
 use Illuminate\Support\Facades\Validator;
 use App\Exports\ComplaintsAnalyticsExport;
+use App\Services\LogService;
 
 class AnalyticsController extends Controller
 {
@@ -194,9 +195,11 @@ class AnalyticsController extends Controller
             : 100;
 
         // Service distribution by category - optimized for pie/donut charts
-        $categoryDistribution = Service::with(['category' => function ($query) {
-            $query->select('id', 'name');
-        }])
+        $categoryDistribution = Service::with([
+            'category' => function ($query) {
+                $query->select('id', 'name');
+            }
+        ])
             ->select('category_id', DB::raw('count(*) as count'))
             ->whereBetween('created_at', [$startDate, $endDate])
             ->groupBy('category_id')
@@ -941,7 +944,7 @@ class AnalyticsController extends Controller
                 preg_match('/-(\d+)\./', $file, $matches);
 
                 if (isset($matches[1])) {
-                    $fileTime = (int)$matches[1];
+                    $fileTime = (int) $matches[1];
 
                     if ($fileTime < $cutoffTime) {
                         Storage::disk('public')->delete($file);
@@ -949,7 +952,10 @@ class AnalyticsController extends Controller
                     }
                 }
             } catch (\Exception $e) {
-                Log::error("Failed to delete export file: {$file}", ['error' => $e->getMessage()]);
+                LogService::exception($e, [
+                    'action' => 'delete_export_file',
+                    'file' => $file
+                ]);
             }
         }
 

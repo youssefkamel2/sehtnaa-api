@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Services\LogService;
 
 class LogCleanCommand extends Command
 {
@@ -15,25 +16,27 @@ class LogCleanCommand extends Command
     {
         $hours = (int) $this->option('keep-last');
         $cutoff = now()->subHours($hours);
-        
+
         $this->info("Starting log cleanup (retaining logs from last {$hours} hours)...");
-        Log::channel('scheduler')->info("Initiating log cleanup", [
-            'retention_hours' => $hours,
-            'cutoff_time' => $cutoff
+        LogService::scheduler('info', 'Initiating log cleanup', [
+            'keep_last' => $hours,
+            'log_path' => storage_path('logs')
         ]);
 
         $results = [
             'laravel.log' => $this->cleanLogFile('laravel.log', $cutoff),
             'notifications.log' => $this->cleanLogFile('notifications.log', $cutoff)
         ];
-        
+
         $this->table(
             ['File', 'Status', 'Size', 'Last Modified'],
             $this->formatResults($results)
         );
 
-        Log::channel('scheduler')->info('Log files cleanup completed', [
-            'results' => $results
+        LogService::scheduler('info', 'Log files cleanup completed', [
+            'files_processed' => count($results),
+            'files_deleted' => array_sum(array_column($results, 'action')),
+            'space_freed' => 0 // This would require actual file size tracking, which is not implemented here.
         ]);
     }
 
@@ -45,15 +48,15 @@ class LogCleanCommand extends Command
             'action' => 'skipped',
             'reason' => 'not_found'
         ];
-        
+
         if (!file_exists($path)) {
             return $result;
         }
-        
-        $fileSize = round(filesize($path)/1024, 2); // KB
+
+        $fileSize = round(filesize($path) / 1024, 2); // KB
         $modified = filemtime($path);
         $modifiedDate = date('Y-m-d H:i:s', $modified);
-        
+
         $result = [
             'file' => $filename,
             'size_kb' => $fileSize,
@@ -66,7 +69,7 @@ class LogCleanCommand extends Command
             if (unlink($path)) {
                 $result['action'] = 'deleted';
                 $result['reason'] = 'expired';
-                
+
                 // Create new empty log file
                 file_put_contents($path, '');
                 chmod($path, 0644);
@@ -75,7 +78,7 @@ class LogCleanCommand extends Command
                 $result['reason'] = 'delete_failed';
             }
         }
-        
+
         return $result;
     }
 

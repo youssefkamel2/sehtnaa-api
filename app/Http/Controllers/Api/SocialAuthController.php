@@ -5,13 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Traits\ResponseTrait;
+use App\Services\LogService;
 use Illuminate\Http\Request;
 use Laravel\Socialite\Facades\Socialite;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Exception;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 
 class SocialAuthController extends Controller
 {
@@ -22,7 +22,7 @@ class SocialAuthController extends Controller
     public function getAuthUrl($provider)
     {
         if (!in_array($provider, $this->supportedProviders)) {
-            Log::warning('Unsupported social provider requested', ['provider' => $provider]);
+            LogService::auth('warning', 'Unsupported social provider requested', ['provider' => $provider]);
             return $this->error('Provider not supported', 422);
         }
 
@@ -32,13 +32,12 @@ class SocialAuthController extends Controller
                 ->redirect()
                 ->getTargetUrl();
 
-            Log::info('Social auth URL generated', ['provider' => $provider]);
+            LogService::auth('info', 'Social auth URL generated', ['provider' => $provider]);
             return $this->success(['url' => $url], 'Auth URL generated successfully');
         } catch (Exception $e) {
-            Log::error('Failed to generate social auth URL', [
+            LogService::exception($e, [
                 'provider' => $provider,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'action' => 'generate_auth_url'
             ]);
             return $this->error('Failed to generate auth URL', 500);
         }
@@ -47,7 +46,7 @@ class SocialAuthController extends Controller
     public function handleCallback(Request $request, $provider)
     {
         if (!in_array($provider, $this->supportedProviders)) {
-            Log::warning('Unsupported social provider callback', ['provider' => $provider]);
+            LogService::auth('warning', 'Unsupported social provider callback', ['provider' => $provider]);
             return $this->error('Provider not supported', 422);
         }
 
@@ -60,7 +59,7 @@ class SocialAuthController extends Controller
             // Generate JWT token
             $token = JWTAuth::fromUser($user);
 
-            Log::info('Social login successful', [
+            LogService::auth('info', 'Social login successful', [
                 'provider' => $provider,
                 'user_id' => $user->id,
                 'email' => $user->email
@@ -83,13 +82,12 @@ class SocialAuthController extends Controller
             ], 'Login successful');
 
         } catch (Exception $e) {
-            Log::error('Social auth callback failed', [
+            LogService::exception($e, [
                 'provider' => $provider,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'action' => 'social_callback'
             ]);
 
-            return $this->error('Authentication failed: ' . $e->getMessage(), 401);
+            return $this->error('Authentication failed', 401);
         }
     }
 
@@ -109,7 +107,7 @@ class SocialAuthController extends Controller
                 ->first();
 
             if ($existing) {
-                Log::warning('Social login attempt with existing email', [
+                LogService::auth('warning', 'Social login attempt with existing email', [
                     'provider' => $provider,
                     'email' => $socialUser->getEmail()
                 ]);
@@ -138,7 +136,7 @@ class SocialAuthController extends Controller
 
             $user->customer()->create();
 
-            Log::info('New social user created', [
+            LogService::auth('info', 'New social user created', [
                 'provider' => $provider,
                 'user_id' => $user->id,
                 'email' => $user->email
@@ -155,7 +153,7 @@ class SocialAuthController extends Controller
                 ])
                 ->log('Customer registered via ' . ucfirst($provider));
         } else {
-            Log::info('Existing social user logged in', [
+            LogService::auth('info', 'Existing social user logged in', [
                 'provider' => $provider,
                 'user_id' => $user->id,
                 'email' => $user->email

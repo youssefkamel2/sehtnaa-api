@@ -58,70 +58,115 @@ return [
             'ignore_exceptions' => false,
         ],
 
-        'scheduler' => [
-            'driver' => 'single',
-            'path' => storage_path('logs/scheduler.log'),
-            'level' => 'debug',
-        ],
-
-        'notifications' => [
-            'driver' => 'single',
-            'path' => storage_path('logs/notifications.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
-            'permission' => 0664,
-        ],
-
-        'firestore' => [
-            'driver' => 'single',
-            'path' => storage_path('logs/firestore.log'),
-            'level' => 'debug',
-        ],
-        
-        'fcm_debug' => [
-            'driver' => 'daily',
-            'path' => storage_path('logs/fcm_debug.log'),
-            'level' => 'debug',
-            'days' => 7,
-        ],
-    
-        'fcm_errors' => [
-            'driver' => 'daily',
-            'path' => storage_path('logs/fcm_errors.log'),
-            'level' => 'debug',
-            'days' => 14,
-        ],
-        
-        'job_processing' => [
-            'driver' => 'daily',
-            'path' => storage_path('logs/job_processing.log'),
-            'level' => env('APP_DEBUG') ? 'debug' : 'info',
-            'days' => 7,
-        ],
-
-        'provider_matching' => [
-            'driver' => 'single',
-            'path' => storage_path('logs/provider_matching.log'),
-            'level' => 'debug',
-        ],
-
-        'request_expansion' => [
-            'driver' => 'single',
-            'path' => storage_path('logs/request_expansion.log'),
-            'level' => 'debug',
-        ],
-
+        // Main application logs
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'replace_placeholders' => true,
         ],
 
+        // Application errors only (for production)
+        'errors' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/errors.log'),
+            'level' => 'error',
+            'replace_placeholders' => true,
+        ],
+
+        // Authentication and security logs
+        'auth' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/auth.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // API requests and responses
+        'api' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/api.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // Database operations
+        'database' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/database.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // Job processing and queues
+        'jobs' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/jobs.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // Notifications and FCM
+        'notifications' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/notifications.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // FCM errors only
+        'fcm_errors' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/fcm_errors.log'),
+            'level' => 'error',
+            'replace_placeholders' => true,
+        ],
+
+        // Firestore operations
+        'firestore' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/firestore.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // Provider matching and notifications
+        'providers' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/providers.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // Request expansion and processing
+        'requests' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/requests.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // Scheduler and cron jobs
+        'scheduler' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/scheduler.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'replace_placeholders' => true,
+        ],
+
+        // Debug logs (only in development)
+        'debug' => [
+            'driver' => env('APP_DEBUG') ? 'single' : 'null',
+            'path' => storage_path('logs/debug.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
+        // Legacy channels for backward compatibility
         'daily' => [
-            'driver' => 'daily',
+            'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
-            'days' => 14,
+            'level' => env('LOG_LEVEL', 'info'),
             'replace_placeholders' => true,
         ],
 
@@ -136,7 +181,7 @@ return [
 
         'papertrail' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'handler' => env('LOG_PAPERTRAIL_HANDLER', SyslogUdpHandler::class),
             'handler_with' => [
                 'host' => env('PAPERTRAIL_URL'),
@@ -148,7 +193,7 @@ return [
 
         'stderr' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'handler' => StreamHandler::class,
             'formatter' => env('LOG_STDERR_FORMATTER'),
             'with' => [
@@ -159,14 +204,14 @@ return [
 
         'syslog' => [
             'driver' => 'syslog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'facility' => LOG_USER,
             'replace_placeholders' => true,
         ],
 
         'errorlog' => [
             'driver' => 'errorlog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', 'info'),
             'replace_placeholders' => true,
         ],
 

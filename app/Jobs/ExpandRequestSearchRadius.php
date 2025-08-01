@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use App\Services\LogService;
 
 class ExpandRequestSearchRadius implements ShouldQueue
 {
@@ -30,26 +31,26 @@ class ExpandRequestSearchRadius implements ShouldQueue
     {
         // Reload the fresh request data
         $request = ServiceRequest::find($this->request->id);
-        
+
         // Check if request is still pending
         if (!$request || $request->status !== 'pending') {
-            Log::channel('request_expansion')->info('Request no longer pending, stopping expansion', [
-                'request_id' => $this->request->id,
-                'status' => $request ? $request->status : 'deleted'
+            LogService::requests('info', 'Request no longer pending, stopping expansion', [
+                'request_id' => $request->id,
+                'status' => $request->status
             ]);
             return;
         }
 
         $nextRadius = $this->getNextRadius($this->currentRadius);
-        
+
         if ($nextRadius) {
             // Find and notify providers for the next radius
             $notifiedCount = $providerNotifier->findAndNotifyProviders($request, $nextRadius);
-            
-            Log::channel('request_expansion')->info('Expanded request search radius', [
+
+            LogService::requests('info', 'Expanded request search radius', [
                 'request_id' => $request->id,
-                'current_radius' => $this->currentRadius,
-                'next_radius' => $nextRadius,
+                'old_radius' => $this->currentRadius,
+                'new_radius' => $nextRadius,
                 'providers_notified' => $notifiedCount,
                 'attempt' => $this->attempt
             ]);
@@ -74,7 +75,7 @@ class ExpandRequestSearchRadius implements ShouldQueue
     {
         $radiusSequence = [1, 3, 5];
         $currentIndex = array_search($currentRadius, $radiusSequence);
-        
+
         return $radiusSequence[$currentIndex + 1] ?? null;
     }
 }

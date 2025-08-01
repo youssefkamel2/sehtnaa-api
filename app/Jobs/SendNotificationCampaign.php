@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use App\Services\LogService;
 
 class SendNotificationCampaign implements ShouldQueue
 {
@@ -26,7 +27,7 @@ class SendNotificationCampaign implements ShouldQueue
     {
         $this->campaignId = $campaignId;
         $this->userId = $userId;
-        Log::channel('job_processing')->debug('Job created', [
+        LogService::jobs('debug', 'Job created', [
             'campaign_id' => $campaignId,
             'user_id' => $userId
         ]);
@@ -35,7 +36,7 @@ class SendNotificationCampaign implements ShouldQueue
     public function handle(FirebaseService $firebaseService)
     {
 
-        Log::channel('job_processing')->debug('Job processing started', [
+        LogService::jobs('debug', 'Job processing started', [
             'campaign_id' => $this->campaignId,
             'user_id' => $this->userId,
             'attempt' => $this->attempts(),
@@ -46,22 +47,12 @@ class SendNotificationCampaign implements ShouldQueue
             ->first();
 
         if (!$notificationLog) {
-            $errorMessage = "Notification log not found";
-            Log::channel('notifications')->error($errorMessage, [
+            $errorMessage = 'Notification log not found for campaign';
+            LogService::notifications('error', $errorMessage, [
                 'campaign_id' => $this->campaignId,
                 'user_id' => $this->userId
-                
             ]);
-            
-            // Also log to fcm_errors for easier tracking
-            Log::channel('fcm_errors')->error($errorMessage, [
-                'type' => 'missing_notification_log',
-                'campaign_id' => $this->campaignId,
-                'user_id' => $this->userId,
-            ]);
-            
-
-            return;
+            throw new Exception($errorMessage);
         }
 
         try {
@@ -77,21 +68,20 @@ class SendNotificationCampaign implements ShouldQueue
             if (empty($notificationLog->device_token)) {
                 $errorMessage = 'Device token no longer available';
                 $this->handleFailure($notificationLog, $errorMessage);
-                Log::channel('fcm_errors')->error($errorMessage, [
-                    'type' => 'missing_device_token',
-                    'notification_id' => $notificationLog->id,
+                LogService::fcmErrors('Device token no longer available', [
+                    'campaign_id' => $this->campaignId,
                     'user_id' => $this->userId,
+                    'notification_id' => $notificationLog->id,
+                    'error' => $errorMessage
                 ]);
-                
+
                 return;
             }
 
-            Log::channel('fcm_debug')->debug('Sending FCM notification', [
-                'notification_id' => $notificationLog->id,
-                'device_token' => ($notificationLog->device_token), 
-                'title' => $notificationLog->title,
-                'body' => $notificationLog->body,
-                'data' => $notificationLog->data,
+            LogService::notifications('debug', 'Sending FCM notification', [
+                'campaign_id' => $this->campaignId,
+                'user_id' => $this->userId,
+                'fcm_token' => $notificationLog->device_token
             ]);
 
             // Send notification
@@ -102,10 +92,10 @@ class SendNotificationCampaign implements ShouldQueue
                 $notificationLog->data ?? []
             );
 
-            Log::channel('fcm_debug')->debug('FCM response received', [
-                'notification_id' => $notificationLog->id,
-                'response' => $response,
-                'success' => $response['success'] ?? false,
+            LogService::notifications('debug', 'FCM response received', [
+                'campaign_id' => $this->campaignId,
+                'user_id' => $this->userId,
+                'response' => $response
             ]);
 
             if ($response['success']) {
@@ -114,9 +104,14 @@ class SendNotificationCampaign implements ShouldQueue
                 $this->handleFailure($notificationLog, $response['error'], $response);
             }
 
-        } catch (\Exception $e) {
-            $this->handleFailure($notificationLog, $e->getMessage());
-            throw $e; // Allow job to retry if attempts remain
+        } catch (Exception $e) {
+            $errorMessage = 'Failed to send FCM notification';
+            LogService::fcmErrors($errorMessage, [
+                'campaign_id' => $this->campaignId,
+                'user_id' => $this->userId,
+                'error' => $e->getMessage()
+            ]);
+            throw new Exception($errorMessage);
         }
     }
 
@@ -174,7 +169,7 @@ class SendNotificationCampaign implements ShouldQueue
 
     protected function logAttempt(NotificationLog $log, string $status, array $context = [])
     {
-        Log::channel('notifications')->log(
+        LogService::notifications(
             $this->getLogLevel($status),
             $this->formatLogMessage($log, $status),
             [
@@ -202,7 +197,7 @@ class SendNotificationCampaign implements ShouldQueue
 
     protected function getLogLevel(string $status)
     {
-        return match($status) {
+        return match ($status) {
             'success' => 'info',
             'attempt_start' => 'debug',
             'failed' => 'error',
@@ -227,7 +222,8 @@ class SendNotificationCampaign implements ShouldQueue
             ]);
         }
 
-        Log::channel('notifications')->error(
+        LogService::notifications(
+            'error',
             "Job failed for campaign {$this->campaignId} user {$this->userId}",
             [
                 'error' => $exception->getMessage(),

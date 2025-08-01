@@ -8,6 +8,7 @@ use App\Models\Provider;
 use App\Models\RequestProvider;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Services\LogService;
 
 class ProviderNotifier
 {
@@ -334,14 +335,14 @@ class ProviderNotifier
     {
         $logData['error'] = 'Service not found';
         $logData['execution_stage'] = 'failed';
-        Log::channel('provider_matching')->error('Service not found', $logData);
+        LogService::providers('error', 'Service not found', $logData);
     }
 
     protected function logNoProvidersFound(&$logData)
     {
         $logData['outcome'] = 'No providers found in radius';
         $logData['execution_stage'] = 'completed';
-        Log::channel('provider_matching')->info('No providers found', $logData);
+        LogService::providers('info', 'No providers found', $logData);
     }
 
     protected function logFinalResults($results, &$logData)
@@ -353,7 +354,7 @@ class ProviderNotifier
         $logData['notification_failed'] = $results['notification_failed'];
         $logData['execution_stage'] = 'completed';
 
-        Log::channel('provider_matching')->info('Provider notification results', $logData);
+        LogService::providers('info', 'Provider notification results', $logData);
     }
 
     protected function logCriticalError($e, &$logData)
@@ -361,7 +362,7 @@ class ProviderNotifier
         $logData['error'] = $e->getMessage();
         $logData['trace'] = $e->getTraceAsString();
         $logData['execution_stage'] = 'failed';
-        Log::channel('provider_matching')->error('Critical error in provider notification', $logData);
+        LogService::providers('error', 'Critical error in provider notification', $logData);
     }
 
     protected function calculateDistance($lat1, $lon1, $lat2, $lon2)
