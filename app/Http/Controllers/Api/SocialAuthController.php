@@ -127,7 +127,7 @@ class SocialAuthController extends Controller
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'email' => $socialUser->getEmail(),
-                'phone' => 'temp_' . Str::random(10),
+                'phone' => null,
                 'password' => Hash::make(Str::random(32)),
                 'user_type' => 'customer',
                 'status' => 'active',
