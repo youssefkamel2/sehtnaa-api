@@ -93,9 +93,9 @@ class SocialAuthController extends Controller
 
     private function findOrCreateUser($provider, $socialUser)
     {
-        // Find by provider ID first
-        $user = User::where('provider', $provider)
-            ->where('provider_id', $socialUser->getId())
+        // Find by auth source ID first
+        $user = User::where('auth_source', $provider)
+            ->where('auth_source_id', $socialUser->getId())
             ->where('user_type', 'customer')
             ->first();
 
@@ -103,7 +103,7 @@ class SocialAuthController extends Controller
             // Check if email exists (but not with social login)
             $existing = User::where('email', $socialUser->getEmail())
                 ->where('user_type', 'customer')
-                ->whereNull('provider')
+                ->whereNull('auth_source')
                 ->first();
 
             if ($existing) {
@@ -129,8 +129,8 @@ class SocialAuthController extends Controller
                 'password' => Hash::make(Str::random(32)),
                 'user_type' => 'customer',
                 'status' => 'active',
-                'provider' => $provider,
-                'provider_id' => $socialUser->getId(),
+                'auth_source' => $provider,
+                'auth_source_id' => $socialUser->getId(),
                 'profile_image' => $socialUser->getAvatar(),
             ]);
 

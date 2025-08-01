@@ -180,6 +180,16 @@ class AuthController extends Controller
 
         if ($user->user_type === 'provider') {
             $provider = $user->provider;
+
+            // Check if provider exists (this should be rare, but handle gracefully)
+            if (!$provider) {
+                activity()
+                    ->causedBy($user)
+                    ->withProperties(['user_id' => $user->id])
+                    ->log('Provider record missing for user during login.');
+                return $this->error('Provider account not properly configured. Please contact support.', 403);
+            }
+
             $requiredDocuments = RequiredDocument::where('provider_type', $provider->provider_type)->get();
             $uploadedDocuments = $provider->documents;
 

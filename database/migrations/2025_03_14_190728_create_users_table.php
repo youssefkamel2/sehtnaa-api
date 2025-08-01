@@ -27,8 +27,8 @@ return new class extends Migration {
             $table->string('device_type')->nullable();
             $table->string('profile_image')->default('profile_images/user.png');
             $table->date('birth_date')->nullable();
-            $table->string('provider')->nullable();
-            $table->string('provider_id')->nullable()->unique();
+            $table->string('auth_source')->nullable();
+            $table->string('auth_source_id')->nullable()->unique();
             $table->timestamps();
         });
     }

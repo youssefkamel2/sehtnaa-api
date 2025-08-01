@@ -30,8 +30,8 @@ class User extends Authenticatable implements JWTSubject
         'fcm_token',
         'profile_image',
         'device_type',
-        'provider',
-        'provider_id'
+        'auth_source',
+        'auth_source_id'
     ];
     protected $hidden = ['password'];
 

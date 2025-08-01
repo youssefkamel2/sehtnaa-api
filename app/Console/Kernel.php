@@ -48,6 +48,14 @@ class Kernel extends ConsoleKernel
         // Process general queue
         $schedule->call(function () {
             try {
+                // Check database connection first
+                if (!\DB::connection()->getPdo()) {
+                    LogService::scheduler('error', 'Database connection failed during queue processing', [
+                        'action' => 'queue_processing'
+                    ]);
+                    return;
+                }
+
                 \Artisan::call('queue:work', ['--timeout' => 60, '--tries' => 3, '--max-jobs' => 10]);
                 LogService::scheduler('info', 'General queue processed', [
                     'status' => 'completed'
@@ -62,11 +70,26 @@ class Kernel extends ConsoleKernel
         // Retry failed jobs
         $schedule->call(function () {
             try {
+                // Check database connection first
+                if (!\DB::connection()->getPdo()) {
+                    LogService::scheduler('error', 'Database connection failed during failed jobs retry', [
+                        'action' => 'failed_jobs_retry'
+                    ]);
+                    return;
+                }
+
                 // Get all failed job IDs and retry them
                 $failedJobs = \DB::table('failed_jobs')->pluck('id')->toArray();
                 if (!empty($failedJobs)) {
                     foreach ($failedJobs as $jobId) {
-                        \Artisan::call('queue:retry', ['id' => $jobId]);
+                        try {
+                            \Artisan::call('queue:retry', ['id' => $jobId]);
+                        } catch (\Exception $jobException) {
+                            LogService::scheduler('error', 'Failed to retry specific job', [
+                                'job_id' => $jobId,
+                                'error' => $jobException->getMessage()
+                            ]);
+                        }
                     }
                     LogService::scheduler('info', 'Failed jobs retry completed', [
                         'retried_count' => count($failedJobs)
@@ -77,7 +100,7 @@ class Kernel extends ConsoleKernel
                     'action' => 'failed_jobs_retry'
                 ]);
             }
-        })->everyMinute()->name('retry-failed-jobs');
+        })->everyFiveMinutes()->name('retry-failed-jobs');
 
         // Prune Telescope logs (if Telescope is enabled)
         if (class_exists('\Laravel\Telescope\Telescope')) {
@@ -96,6 +119,14 @@ class Kernel extends ConsoleKernel
         // Prune Activity Log
         $schedule->call(function () {
             try {
+                // Check database connection first
+                if (!\DB::connection()->getPdo()) {
+                    LogService::scheduler('error', 'Database connection failed during activity log pruning', [
+                        'action' => 'activity_log_pruning'
+                    ]);
+                    return;
+                }
+
                 \Artisan::call('activitylog:clean');
                 LogService::scheduler('info', 'Activity Log pruning completed');
             } catch (\Exception $e) {
@@ -132,6 +163,14 @@ class Kernel extends ConsoleKernel
         // Clean up invalid FCM tokens
         $schedule->call(function () {
             try {
+                // Check database connection first
+                if (!\DB::connection()->getPdo()) {
+                    LogService::scheduler('error', 'Database connection failed during invalid token cleanup', [
+                        'action' => 'invalid_token_cleanup'
+                    ]);
+                    return;
+                }
+
                 \Artisan::call('notifications:cleanup-tokens', ['--force' => true]);
                 LogService::scheduler('info', 'Invalid FCM tokens cleanup completed');
             } catch (\Exception $e) {
