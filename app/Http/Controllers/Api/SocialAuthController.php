@@ -4,62 +4,55 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\ResponseTrait;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Laravel\Socialite\Facades\Socialite;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Exception;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class SocialAuthController extends Controller
 {
+    use ResponseTrait;
+
     private $supportedProviders = ['google', 'facebook'];
 
     public function getAuthUrl($provider)
     {
         if (!in_array($provider, $this->supportedProviders)) {
-            return response()->json(['error' => 'Provider not supported'], 422);
+            Log::warning('Unsupported social provider requested', ['provider' => $provider]);
+            return $this->error('Provider not supported', 422);
         }
 
-        return response()->json([
-            'url' => Socialite::driver($provider)
+        try {
+            $url = Socialite::driver($provider)
                 ->stateless()
                 ->redirect()
-                ->getTargetUrl()
-        ]);
+                ->getTargetUrl();
+
+            Log::info('Social auth URL generated', ['provider' => $provider]);
+            return $this->success(['url' => $url], 'Auth URL generated successfully');
+        } catch (Exception $e) {
+            Log::error('Failed to generate social auth URL', [
+                'provider' => $provider,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return $this->error('Failed to generate auth URL', 500);
+        }
     }
 
     public function handleCallback(Request $request, $provider)
     {
         if (!in_array($provider, $this->supportedProviders)) {
-            return response()->json(['error' => 'Provider not supported'], 422);
-        }
-
-        // Get code from either GET parameters or POST body
-        $code = $request->input('code') ?? $request->code;
-
-        if (!$code) {
-            return response()->json([
-                'error' => 'Authorization code not found',
-                'details' => 'The code parameter is missing from the callback'
-            ], 400);
+            Log::warning('Unsupported social provider callback', ['provider' => $provider]);
+            return $this->error('Provider not supported', 422);
         }
 
         try {
-            $driver = Socialite::driver($provider)->stateless();
-
-            if ($provider === 'google') {
-                // Google-specific flow
-                $response = $driver->getAccessTokenResponse($code);
-                $accessToken = $response['access_token'];
-                $socialUser = $driver->userFromToken($accessToken);
-            } elseif ($provider === 'facebook') {
-                // Facebook-specific flow - use standard Socialite approach
-                // $socialUser = $driver->userFromCode($code);
-                $user = Socialite::driver('facebook')->user();
-                return response()->json($user);
-            }
+            $socialUser = Socialite::driver($provider)->stateless()->user();
 
             // Find or create user
             $user = $this->findOrCreateUser($provider, $socialUser);
@@ -67,95 +60,106 @@ class SocialAuthController extends Controller
             // Generate JWT token
             $token = JWTAuth::fromUser($user);
 
-            return response()->json([
+            Log::info('Social login successful', [
+                'provider' => $provider,
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+
+            // Log activity
+            activity()
+                ->causedBy($user)
+                ->withProperties([
+                    'user_id' => $user->id,
+                    'provider' => $provider,
+                    'email' => $user->email
+                ])
+                ->log('User logged in via ' . ucfirst($provider));
+
+            return $this->success([
                 'token' => $token,
                 'token_type' => 'bearer',
                 'user' => $user
-            ]);
+            ], 'Login successful');
 
         } catch (Exception $e) {
-            \Log::error('Social auth error', [
+            Log::error('Social auth callback failed', [
                 'provider' => $provider,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'code' => $code
-            ]);
-
-            return response()->json([
-                'error' => 'Authentication failed',
-                'details' => $e->getMessage(),
-                'provider' => $provider
-            ], 401);
-        }
-    }
-
-    public function debugFacebook(Request $request)
-    {
-        try {
-            $code = $request->input('code');
-            if (!$code) {
-                return response()->json(['error' => 'No code provided'], 400);
-            }
-
-            $driver = Socialite::driver('facebook')->stateless();
-
-            // Try to get access token response
-            $response = $driver->getAccessTokenResponse($code);
-
-            return response()->json([
-                'success' => true,
-                'response' => $response,
-                'has_access_token' => isset($response['access_token'])
-            ]);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
-            ], 500);
+            ]);
+
+            return $this->error('Authentication failed: ' . $e->getMessage(), 401);
         }
     }
 
     private function findOrCreateUser($provider, $socialUser)
     {
-        // Get user ID and email from social user object
-        $providerId = $socialUser->id ?? $socialUser->getId();
-        $email = $socialUser->email ?? $socialUser->getEmail();
-        $name = $socialUser->name ?? $socialUser->getName();
-        $avatar = $socialUser->avatar ?? $socialUser->getAvatar();
-
         // Find by provider ID first
         $user = User::where('provider', $provider)
-            ->where('provider_id', $providerId)
+            ->where('provider_id', $socialUser->getId())
             ->where('user_type', 'customer')
             ->first();
 
         if (!$user) {
             // Check if email exists (but not with social login)
-            $existing = User::where('email', $email)
+            $existing = User::where('email', $socialUser->getEmail())
                 ->where('user_type', 'customer')
                 ->whereNull('provider')
                 ->first();
 
             if ($existing) {
+                Log::warning('Social login attempt with existing email', [
+                    'provider' => $provider,
+                    'email' => $socialUser->getEmail()
+                ]);
                 throw new Exception('A customer with this email already exists. Please login with email and password.');
             }
 
-            // Create new user
+            // Create new user, save as first name and last name
+            $fullName = $socialUser->getName() ?? 'Customer';
+            $nameParts = explode(' ', $fullName, 2); // Split by first space only
+
+            $firstName = $nameParts[0] ?? 'Customer';
+            $lastName = $nameParts[1] ?? '';
+
             $user = User::create([
-                'first_name' => $name ?? 'Customer',
-                'last_name' => '',
-                'email' => $email,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $socialUser->getEmail(),
                 'phone' => 'temp_' . Str::random(10),
                 'password' => Hash::make(Str::random(32)),
                 'user_type' => 'customer',
                 'status' => 'active',
                 'provider' => $provider,
-                'provider_id' => $providerId,
-                'profile_image' => $avatar,
+                'provider_id' => $socialUser->getId(),
+                'profile_image' => $socialUser->getAvatar(),
             ]);
 
             $user->customer()->create();
+
+            Log::info('New social user created', [
+                'provider' => $provider,
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+
+            // Log activity for new user creation
+            activity()
+                ->performedOn($user)
+                ->causedBy($user)
+                ->withProperties([
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'provider' => $provider
+                ])
+                ->log('Customer registered via ' . ucfirst($provider));
+        } else {
+            Log::info('Existing social user logged in', [
+                'provider' => $provider,
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
         }
 
         return $user;

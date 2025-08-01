@@ -23,26 +23,20 @@ class AppServiceProvider extends ServiceProvider
         // Register Socialite providers
         $socialite = $this->app->make('Laravel\Socialite\Contracts\Factory');
 
-        $socialite->extend(
-            'facebook',
-            function ($app) use ($socialite) {
-                $config = $app['config']['services.facebook'];
-                return $socialite->buildProvider(
-                    \SocialiteProviders\Facebook\Provider::class,
-                    $config
-                );
-            }
-        );
+        $socialite->extend('facebook', function ($app) use ($socialite) {
+            $config = $app['config']['services.facebook'];
+            return $socialite->buildProvider(
+                \SocialiteProviders\Facebook\Provider::class,
+                $config
+            );
+        });
 
-        $socialite->extend(
-            'google',
-            function ($app) use ($socialite) {
-                $config = $app['config']['services.google'];
-                return $socialite->buildProvider(
-                    \SocialiteProviders\Google\Provider::class,
-                    $config
-                );
-            }
-        );
+        $socialite->extend('google', function ($app) use ($socialite) {
+            $config = $app['config']['services.google'];
+            return $socialite->buildProvider(
+                \SocialiteProviders\Google\Provider::class,
+                $config
+            );
+        });
     }
 }
