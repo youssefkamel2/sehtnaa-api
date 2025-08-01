@@ -49,7 +49,7 @@ class AuthController extends Controller
                 function ($attribute, $value, $fail) {
                     // Validate Egyptian NID format
                     if (!preg_match('/^[23]\d{13}$/', $value)) {
-                        $fail('The national ID must be a valid 14-digit Egyptian ID starting with 2 or 3.');
+                        $fail('The national ID must be a valid 14-digit Egyptian ID.');
                     }
                 },
             ],

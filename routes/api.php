@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ProviderController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\ResetPasswordController;
 
 Route::prefix('auth')->group(function () {
@@ -21,6 +22,13 @@ Route::prefix('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:api');
     Route::get('/me', [AuthController::class, 'me'])->middleware(['auth:api']);
 });
+
+// Route::post('auth/social/{provider}', [\App\Http\Controllers\Api\SocialAuthController::class, 'socialLogin'])
+//     ->where('provider', 'google|facebook');
+
+Route::get('/auth/social/{provider}/url', [SocialAuthController::class, 'getAuthUrl']);
+Route::match(['get', 'post'], '/auth/social/{provider}/callback', [SocialAuthController::class, 'handleCallback']);
+
 
 Route::prefix('reset-password')->group(function () {
     Route::post('/send-code', [ResetPasswordController::class, 'sendCode']);

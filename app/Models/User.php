@@ -15,9 +15,23 @@ class User extends Authenticatable implements JWTSubject
     use Notifiable, LogsActivity;
 
     protected $fillable = [
-        'first_name', 'last_name', 'email', 'phone', 'password', 
-        'user_type', 'status', 'address', 'gender', 'birth_date',
-        'latitude', 'longitude', 'fcm_token', 'profile_image', 'device_type'
+        'first_name',
+        'last_name',
+        'email',
+        'phone',
+        'password',
+        'user_type',
+        'status',
+        'address',
+        'gender',
+        'birth_date',
+        'latitude',
+        'longitude',
+        'fcm_token',
+        'profile_image',
+        'device_type',
+        'provider',
+        'provider_id'
     ];
     protected $hidden = ['password'];
 
@@ -29,7 +43,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected function serializeDate(DateTimeInterface $date)
     {
-        return $date->format('Y-m-d H:i:s'); 
+        return $date->format('Y-m-d H:i:s');
     }
 
     // Customize the log name
