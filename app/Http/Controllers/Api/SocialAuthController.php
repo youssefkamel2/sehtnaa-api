@@ -56,7 +56,9 @@ class SocialAuthController extends Controller
                 $socialUser = $driver->userFromToken($accessToken);
             } elseif ($provider === 'facebook') {
                 // Facebook-specific flow - use standard Socialite approach
-                $socialUser = $driver->userFromCode($code);
+                // $socialUser = $driver->userFromCode($code);
+                $user = Socialite::driver('facebook')->user();
+                return response()->json($user);
             }
 
             // Find or create user
