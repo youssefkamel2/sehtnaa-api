@@ -16,7 +16,7 @@ class Kernel extends ConsoleKernel
         // Process request expansion queue
         $schedule->call(function () {
             try {
-                \Artisan::call('queue:work', ['--queue' => 'request-expansion', '--timeout' => 60, '--tries' => 3]);
+                \Artisan::call('queue:work', ['--queue' => 'request-expansion', '--timeout' => 60, '--tries' => 3, '--max-jobs' => 10]);
                 LogService::scheduler('info', 'Request expansion queue processed', [
                     'queue' => 'request-expansion',
                     'status' => 'completed'
@@ -29,11 +29,27 @@ class Kernel extends ConsoleKernel
             }
         })->everyMinute()->name('request-expansion-queue')->withoutOverlapping();
 
+        // Process notifications queue
+        $schedule->call(function () {
+            try {
+                \Artisan::call('queue:work', ['--queue' => 'notifications', '--timeout' => 60, '--tries' => 3, '--max-jobs' => 20]);
+                LogService::scheduler('info', 'Notifications queue processed', [
+                    'queue' => 'notifications',
+                    'status' => 'completed'
+                ]);
+            } catch (\Exception $e) {
+                LogService::exception($e, [
+                    'queue' => 'notifications',
+                    'action' => 'queue_processing'
+                ]);
+            }
+        })->everyMinute()->name('notifications-queue')->withoutOverlapping();
+
         // Process general queue
         $schedule->call(function () {
             try {
-                \Artisan::call('queue:work', ['--timeout' => 60, '--tries' => 3]);
-                LogService::scheduler('info', 'Queue processed successfully', [
+                \Artisan::call('queue:work', ['--timeout' => 60, '--tries' => 3, '--max-jobs' => 10]);
+                LogService::scheduler('info', 'General queue processed', [
                     'status' => 'completed'
                 ]);
             } catch (\Exception $e) {

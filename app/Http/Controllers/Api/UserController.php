@@ -306,39 +306,6 @@ class UserController extends Controller
         }
     }
 
-    public function getCampaignDetails($campaignId)
-    {
-        try {
-            $campaign = NotificationLog::select([
-                'campaign_id',
-                'title',
-                'body',
-                'user_type',
-                DB::raw('MIN(created_at) as created_at'),
-                DB::raw('COUNT(*) as total_notifications'),
-                DB::raw('SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count'),
-                DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count >= ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as failed_count'),
-                DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count < ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as pending_count')
-            ])
-                ->where('campaign_id', $campaignId)
-                ->groupBy('campaign_id', 'title', 'body', 'user_type')
-                ->firstOrFail();
-
-            $notifications = NotificationLog::with('user:id,name,email')
-                ->where('campaign_id', $campaignId)
-                ->orderBy('created_at', 'desc');
-
-            $campaign->status = $this->determineCampaignStatus($campaign);
-
-            return $this->success([
-                'campaign' => $campaign,
-                'notifications' => $notifications
-            ], 'Campaign details retrieved successfully');
-        } catch (\Exception $e) {
-            return $this->error('Failed to get campaign details: ' . $e->getMessage(), 500);
-        }
-    }
-
     private function determineCampaignStatus($campaign)
     {
         // If all notifications failed (including invalid tokens)
