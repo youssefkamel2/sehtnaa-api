@@ -56,12 +56,10 @@ class SocialAuthController extends Controller
                 $socialUser = $driver->userFromToken($accessToken);
             } elseif ($provider === 'facebook') {
                 // Facebook-specific flow
-                $response = $driver->getAccessTokenResponse($code);
-                $accessToken = $response['access_token'];
-                $socialUser = $driver->userFromToken($accessToken);
+                $socialUser = $driver->userFromCode($code);
                 
                 // Additional Facebook token validation
-                $this->validateFacebookToken($accessToken);
+                $this->validateFacebookToken($socialUser->token);
             }
     
             // Find or create user
@@ -86,24 +84,24 @@ class SocialAuthController extends Controller
     
     private function validateFacebookToken($accessToken)
     {
-        $fb = new \Facebook\Facebook([
-            'app_id' => env('FACEBOOK_CLIENT_ID'),
-            'app_secret' => env('FACEBOOK_CLIENT_SECRET'),
-            'default_graph_version' => 'v12.0',
-        ]);
-        
         try {
+            $fb = new \Facebook\Facebook([
+                'app_id' => env('FACEBOOK_CLIENT_ID'),
+                'app_secret' => env('FACEBOOK_CLIENT_SECRET'),
+                'default_graph_version' => 'v19.0', // Updated to latest version
+            ]);
+            
             // Verify the token is valid
             $response = $fb->get('/me?fields=id,name,email', $accessToken);
             
-            // Additional validation if needed
+            // Additional validation
             $userNode = $response->getGraphUser();
             if (!$userNode->getId()) {
                 throw new Exception('Invalid Facebook user ID');
             }
             
-        } catch (Exception $e) {
-            throw new Exception('Invalid Facebook token: ' . $e->getMessage());
+        } catch (\Exception $e) {
+            throw new Exception('Facebook token validation failed: ' . $e->getMessage());
         }
     }
 
