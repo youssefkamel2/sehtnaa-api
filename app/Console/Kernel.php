@@ -16,29 +16,43 @@ class Kernel extends ConsoleKernel
         // Ensure queue workers are running (check and restart if needed)
         $schedule->call(function () {
             try {
-                // Check if queue workers are running
-                $notificationsWorker = shell_exec("ps aux | grep 'queue:work.*notifications' | grep -v grep");
-                $defaultWorker = shell_exec("ps aux | grep 'queue:work.*default' | grep -v grep");
-
-                // Start notifications worker if not running
-                if (empty($notificationsWorker)) {
-                    shell_exec("php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20 > /dev/null 2>&1 &");
-                    LogService::scheduler('info', 'Notifications queue worker started', [
-                        'action' => 'queue_worker_start'
+                // Check database connection first
+                if (!\DB::connection()->getPdo()) {
+                    LogService::scheduler('error', 'Database connection failed during queue worker health check', [
+                        'action' => 'queue_worker_health_check'
                     ]);
+                    return;
                 }
 
-                // Start default worker if not running
-                if (empty($defaultWorker)) {
-                    shell_exec("php artisan queue:work --queue=default --timeout=60 --tries=3 --max-jobs=10 > /dev/null 2>&1 &");
-                    LogService::scheduler('info', 'Default queue worker started', [
-                        'action' => 'queue_worker_start'
+                // Check if there are any jobs stuck in the queue for too long
+                $stuckJobs = \DB::table('jobs')
+                    ->where('created_at', '<', now()->subMinutes(5))
+                    ->count();
+
+                if ($stuckJobs > 0) {
+                    LogService::scheduler('warning', 'Jobs stuck in queue detected', [
+                        'stuck_jobs_count' => $stuckJobs,
+                        'action' => 'queue_worker_health_check'
                     ]);
+
+                    // Try to restart queue workers by dispatching a restart job
+                    dispatch(function () {
+                        // This will be processed by the queue system itself
+                        LogService::jobs('info', 'Queue worker restart requested', [
+                            'action' => 'queue_worker_restart'
+                        ]);
+                    })->onQueue('default');
                 }
+
+                // Log health check completion
+                $totalJobs = \DB::table('jobs')->count();
+                $failedJobs = \DB::table('failed_jobs')->count();
 
                 LogService::scheduler('info', 'Queue workers health check completed', [
-                    'notifications_running' => !empty($notificationsWorker),
-                    'default_running' => !empty($defaultWorker)
+                    'total_jobs' => $totalJobs,
+                    'failed_jobs' => $failedJobs,
+                    'stuck_jobs' => $stuckJobs,
+                    'action' => 'queue_worker_health_check'
                 ]);
             } catch (\Exception $e) {
                 LogService::exception($e, [

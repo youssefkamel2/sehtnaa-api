@@ -14,37 +14,47 @@
 1. **Scheduler vs Queue Workers**: Scheduler runs tasks periodically, but queue workers need to run continuously
 2. **Command Execution**: `queue:work` is a long-running command that should stay active
 3. **Process Management**: Queue workers need to be managed as background processes
+4. **Shared Hosting Restrictions**: `shell_exec` is often disabled on shared hosting
 
 ---
 
 ## 🔧 **Solutions**
 
-### **Solution 1: Scheduler-Based Health Check (Current Implementation)**
+### **Solution 1: Database-Based Health Check (Current Implementation)**
 
-The scheduler now checks if queue workers are running and starts them if needed:
+The scheduler now monitors queue health without using shell commands:
 
 ```php
 // In app/Console/Kernel.php
 $schedule->call(function () {
-    // Check if queue workers are running
-    $notificationsWorker = shell_exec("ps aux | grep 'queue:work.*notifications' | grep -v grep");
-    $defaultWorker = shell_exec("ps aux | grep 'queue:work.*default' | grep -v grep");
-    
-    // Start workers if not running
-    if (empty($notificationsWorker)) {
-        shell_exec("php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20 > /dev/null 2>&1 &");
+    // Check if there are any jobs stuck in the queue for too long
+    $stuckJobs = \DB::table('jobs')
+        ->where('created_at', '<', now()->subMinutes(5))
+        ->count();
+
+    if ($stuckJobs > 0) {
+        LogService::scheduler('warning', 'Jobs stuck in queue detected', [
+            'stuck_jobs_count' => $stuckJobs
+        ]);
     }
     
-    if (empty($defaultWorker)) {
-        shell_exec("php artisan queue:work --queue=default --timeout=60 --tries=3 --max-jobs=10 > /dev/null 2>&1 &");
-    }
+    // Log health check completion
+    $totalJobs = \DB::table('jobs')->count();
+    $failedJobs = \DB::table('failed_jobs')->count();
+    
+    LogService::scheduler('info', 'Queue workers health check completed', [
+        'total_jobs' => $totalJobs,
+        'failed_jobs' => $failedJobs,
+        'stuck_jobs' => $stuckJobs
+    ]);
 })->everyMinute()->name('queue-workers-health-check')->withoutOverlapping();
 ```
 
 **Benefits**:
-- ✅ **Automatic Recovery**: Restarts workers if they die
-- ✅ **Health Monitoring**: Logs worker status
-- ✅ **No Manual Intervention**: Self-healing system
+- ✅ **No Shell Commands**: Works on shared hosting
+- ✅ **Database Monitoring**: Tracks stuck jobs
+- ✅ **Health Logging**: Detailed monitoring information
+- ✅ **Shared Hosting Compatible**: No system-level commands
 
 ---
 
@@ -53,8 +63,8 @@ $schedule->call(function () {
 Run these commands on your production server:
 
 ```bash
-# Kill any existing queue workers
-pkill -f "queue:work"
+# Kill any existing queue workers (if possible)
+pkill -f "queue:work" 2>/dev/null || true
 
 # Start notifications queue worker
 nohup php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20 > /dev/null 2>&1 &
@@ -74,67 +84,35 @@ u540953431  1235  0.0  0.1  12345  6789 ?  S  14:30  0:00 php artisan queue:work
 
 ---
 
-### **Solution 3: Supervisor Setup (Recommended for Production)**
+### **Solution 3: Custom Artisan Command**
 
-#### **Install Supervisor**
+Use the new custom command to start workers:
+
 ```bash
-# Check if supervisor is installed
-which supervisorctl
+# Start queue workers using custom command
+php artisan queue:start-workers
 
-# If not installed, install it
-sudo apt-get install supervisor
+# Or run in daemon mode
+php artisan queue:start-workers --daemon
 ```
 
-#### **Create Configuration File**
-Create `/etc/supervisor/conf.d/laravel-queues.conf`:
+---
 
-```ini
-[program:laravel-notifications-queue]
-process_name=%(program_name)s_%(process_num)02d
-command=php /home/u540953431/domains/sehtnaa.com/public_html/api.sehtnaa.com/artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20
-autostart=true
-autorestart=true
-user=u540953431
-numprocs=1
-redirect_stderr=true
-stdout_logfile=/home/u540953431/domains/sehtnaa.com/public_html/api.sehtnaa.com/storage/logs/notifications-queue.log
-stopwaitsecs=3600
-stopasgroup=true
-killasgroup=true
+### **Solution 4: Cron-Based Queue Workers (Recommended for Shared Hosting)**
 
-[program:laravel-default-queue]
-process_name=%(program_name)s_%(process_num)02d
-command=php /home/u540953431/domains/sehtnaa.com/public_html/api.sehtnaa.com/artisan queue:work --queue=default --timeout=60 --tries=3 --max-jobs=10
-autostart=true
-autorestart=true
-user=u540953431
-numprocs=1
-redirect_stderr=true
-stdout_logfile=/home/u540953431/domains/sehtnaa.com/public_html/api.sehtnaa.com/storage/logs/default-queue.log
-stopwaitsecs=3600
-stopasgroup=true
-killasgroup=true
-```
+Create a cron job that starts queue workers every few minutes:
 
-#### **Start Supervisor**
 ```bash
-# Reload configuration
-sudo supervisorctl reread
-sudo supervisorctl update
-
-# Start queue workers
-sudo supervisorctl start laravel-notifications-queue:*
-sudo supervisorctl start laravel-default-queue:*
-
-# Check status
-sudo supervisorctl status
+# Add to your crontab
+* * * * * cd /home/u540953431/domains/sehtnaa.com/public_html/api.sehtnaa.com && php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20 --stop-when-empty > /dev/null 2>&1
+* * * * * cd /home/u540953431/domains/sehtnaa.com/public_html/api.sehtnaa.com && php artisan queue:work --queue=default --timeout=60 --tries=3 --max-jobs=10 --stop-when-empty > /dev/null 2>&1
 ```
 
-**Expected Output**:
-```
-laravel-default-queue:laravel-default-queue_00   RUNNING   pid 1234, uptime 0:00:30
-laravel-notifications-queue:laravel-notifications-queue_00   RUNNING   pid 1235, uptime 0:00:30
-```
+**Benefits**:
+- ✅ **Shared Hosting Compatible**: No supervisor needed
+- ✅ **Automatic Processing**: Jobs processed every minute
+- ✅ **Resource Efficient**: Workers stop when no jobs
+- ✅ **Reliable**: Cron ensures workers run regularly
 
 ---
 
@@ -145,9 +123,6 @@ laravel-notifications-queue:laravel-notifications-queue_00   RUNNING   pid 1235,
 # Check if workers are running
 ps aux | grep "queue:work"
 
-# Check supervisor status
-sudo supervisorctl status
-
 # Check queue statistics
 php artisan tinker --execute="echo 'Jobs in notifications queue: ' . \DB::table('jobs')->where('queue', 'notifications')->count(); echo PHP_EOL; echo 'Total jobs: ' . \DB::table('jobs')->count();"
 ```
@@ -157,9 +132,8 @@ php artisan tinker --execute="echo 'Jobs in notifications queue: ' . \DB::table(
 # Check scheduler logs
 tail -f storage/logs/scheduler.log
 
-# Check queue worker logs (if using supervisor)
-tail -f storage/logs/notifications-queue.log
-tail -f storage/logs/default-queue.log
+# Check Laravel logs for errors
+tail -f storage/logs/laravel.log
 ```
 
 ### **3. Test Queue Processing**
@@ -175,7 +149,12 @@ php artisan tinker --execute="echo 'Jobs in queue: ' . \DB::table('jobs')->count
 
 ## 🔍 **Troubleshooting**
 
-### **1. Queue Workers Not Starting**
+### **1. Shell Commands Disabled**
+**Error**: `Call to undefined function shell_exec()`
+
+**Solution**: Use database-based monitoring instead of shell commands.
+
+### **2. Queue Workers Not Starting**
 ```bash
 # Check permissions
 ls -la /home/u540953431/domains/sehtnaa.com/public_html/api.sehtnaa.com/artisan
@@ -187,7 +166,7 @@ which php
 php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20
 ```
 
-### **2. Jobs Still Pending**
+### **3. Jobs Still Pending**
 ```bash
 # Check if workers are actually processing
 ps aux | grep "queue:work"
@@ -199,15 +178,6 @@ php artisan queue:failed
 php artisan tinker --execute="print_r(\DB::table('jobs')->first());"
 ```
 
-### **3. Memory Issues**
-```bash
-# Check memory usage
-ps aux | grep "queue:work" | awk '{print $6}'
-
-# Reduce max jobs if needed
-php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=5
-```
-
 ---
 
 ## 📋 **Implementation Steps**
@@ -215,7 +185,7 @@ php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=5
 ### **Immediate Fix (Now)**
 1. **Run Manual Commands**:
    ```bash
-   pkill -f "queue:work"
+   pkill -f "queue:work" 2>/dev/null || true
    nohup php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20 > /dev/null 2>&1 &
    nohup php artisan queue:work --queue=default --timeout=60 --tries=3 --max-jobs=10 > /dev/null 2>&1 &
    ```
@@ -231,19 +201,19 @@ php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=5
    ```
 
 ### **Production Setup (Recommended)**
-1. **Install Supervisor** (if not already installed)
-2. **Create Configuration File**
-3. **Start Supervisor Services**
-4. **Monitor and Verify**
+1. **Add Cron Jobs** for queue processing
+2. **Monitor Scheduler Logs** for health checks
+3. **Set up Alerts** for stuck jobs
+4. **Regular Maintenance** of failed jobs
 
 ---
 
 ## 🎯 **Expected Results**
 
 ### **After Implementation**
-- ✅ **Queue Workers**: Running continuously
+- ✅ **Queue Workers**: Running continuously (via cron or manual)
 - ✅ **Job Processing**: Real-time processing
-- ✅ **Health Monitoring**: Automatic restart if workers die
+- ✅ **Health Monitoring**: Database-based monitoring
 - ✅ **Logging**: Detailed logs for monitoring
 - ✅ **Reliability**: Stable queue processing
 
@@ -258,13 +228,15 @@ php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=5
 ## 🚀 **Current Status**
 
 ### **✅ Fixed Issues**
-- **Scheduler Configuration**: Updated to properly manage queue workers
-- **Health Check**: Automatic detection and restart of failed workers
+- **Shell Command Error**: Replaced with database-based monitoring
+- **Scheduler Configuration**: Updated to work on shared hosting
+- **Health Check**: Automatic detection of stuck jobs
 - **Logging**: Better monitoring and debugging information
 
 ### **📊 Performance**
 - **Job Processing**: Should be real-time now
-- **Worker Management**: Self-healing system
+- **Worker Management**: Cron-based or manual management
 - **Monitoring**: Comprehensive logging and status checks
+- **Shared Hosting Compatible**: No system-level dependencies
 
-**Your queue system should now be fully operational!** 🎉 
+**Your queue system should now work on shared hosting!** 🎉 
