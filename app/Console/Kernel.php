@@ -13,9 +13,51 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        // Ensure queue workers are running (check and restart if needed)
+        $schedule->call(function () {
+            try {
+                // Check if queue workers are running
+                $notificationsWorker = shell_exec("ps aux | grep 'queue:work.*notifications' | grep -v grep");
+                $defaultWorker = shell_exec("ps aux | grep 'queue:work.*default' | grep -v grep");
+
+                // Start notifications worker if not running
+                if (empty($notificationsWorker)) {
+                    shell_exec("php artisan queue:work --queue=notifications --timeout=60 --tries=3 --max-jobs=20 > /dev/null 2>&1 &");
+                    LogService::scheduler('info', 'Notifications queue worker started', [
+                        'action' => 'queue_worker_start'
+                    ]);
+                }
+
+                // Start default worker if not running
+                if (empty($defaultWorker)) {
+                    shell_exec("php artisan queue:work --queue=default --timeout=60 --tries=3 --max-jobs=10 > /dev/null 2>&1 &");
+                    LogService::scheduler('info', 'Default queue worker started', [
+                        'action' => 'queue_worker_start'
+                    ]);
+                }
+
+                LogService::scheduler('info', 'Queue workers health check completed', [
+                    'notifications_running' => !empty($notificationsWorker),
+                    'default_running' => !empty($defaultWorker)
+                ]);
+            } catch (\Exception $e) {
+                LogService::exception($e, [
+                    'action' => 'queue_worker_health_check'
+                ]);
+            }
+        })->everyMinute()->name('queue-workers-health-check')->withoutOverlapping();
+
         // Process request expansion queue
         $schedule->call(function () {
             try {
+                // Check database connection first
+                if (!\DB::connection()->getPdo()) {
+                    LogService::scheduler('error', 'Database connection failed during request expansion', [
+                        'action' => 'request_expansion'
+                    ]);
+                    return;
+                }
+
                 \Artisan::call('queue:work', ['--queue' => 'request-expansion', '--timeout' => 60, '--tries' => 3, '--max-jobs' => 10]);
                 LogService::scheduler('info', 'Request expansion queue processed', [
                     'queue' => 'request-expansion',
@@ -28,44 +70,6 @@ class Kernel extends ConsoleKernel
                 ]);
             }
         })->everyMinute()->name('request-expansion-queue')->withoutOverlapping();
-
-        // Process notifications queue
-        $schedule->call(function () {
-            try {
-                \Artisan::call('queue:work', ['--queue' => 'notifications', '--timeout' => 60, '--tries' => 3, '--max-jobs' => 20]);
-                LogService::scheduler('info', 'Notifications queue processed', [
-                    'queue' => 'notifications',
-                    'status' => 'completed'
-                ]);
-            } catch (\Exception $e) {
-                LogService::exception($e, [
-                    'queue' => 'notifications',
-                    'action' => 'queue_processing'
-                ]);
-            }
-        })->everyMinute()->name('notifications-queue')->withoutOverlapping();
-
-        // Process general queue
-        $schedule->call(function () {
-            try {
-                // Check database connection first
-                if (!\DB::connection()->getPdo()) {
-                    LogService::scheduler('error', 'Database connection failed during queue processing', [
-                        'action' => 'queue_processing'
-                    ]);
-                    return;
-                }
-
-                \Artisan::call('queue:work', ['--timeout' => 60, '--tries' => 3, '--max-jobs' => 10]);
-                LogService::scheduler('info', 'General queue processed', [
-                    'status' => 'completed'
-                ]);
-            } catch (\Exception $e) {
-                LogService::exception($e, [
-                    'action' => 'queue_processing'
-                ]);
-            }
-        })->everyMinute()->name('general-queue')->withoutOverlapping();
 
         // Retry failed jobs
         $schedule->call(function () {
