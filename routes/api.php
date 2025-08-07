@@ -23,9 +23,6 @@ Route::prefix('auth')->group(function () {
     Route::get('/me', [AuthController::class, 'me'])->middleware(['auth:api']);
 });
 
-// Route::post('auth/social/{provider}', [\App\Http\Controllers\Api\SocialAuthController::class, 'socialLogin'])
-//     ->where('provider', 'google|facebook');
-
 Route::get('/auth/social/{provider}/url', [SocialAuthController::class, 'getAuthUrl']);
 Route::match(['get', 'post'], '/auth/social/{provider}/callback', [SocialAuthController::class, 'handleCallback']);
 
