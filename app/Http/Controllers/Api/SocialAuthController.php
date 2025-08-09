@@ -119,8 +119,11 @@ class SocialAuthController extends Controller
                 return $this->redirectToApp('error=invalid_user_data&error_description=Unable%20to%20retrieve%20user%20information%20from%20' . ucfirst($provider));
             }
 
-            // Find or create user
+            // Find or create user (customers only)
             $user = $this->findOrCreateUser($provider, $socialUser);
+
+            // Load customer relationships (social auth is for customers only)
+            $user->load(['customer']);
 
             // Generate JWT token
             $token = JWTAuth::fromUser($user);
@@ -143,8 +146,15 @@ class SocialAuthController extends Controller
                 ])
                 ->log('User logged in via ' . ucfirst($provider));
 
-            // Redirect to mobile app with token
-            return $this->redirectToApp("token={$token}&user_type=customer&provider={$provider}");
+            // Prepare full response data (same structure as normal login)
+            $responseData = [
+                'user' => $user,
+                'token' => $token,
+                'message' => 'Login successful'
+            ];
+
+            // Redirect to mobile app with full response data
+            return $this->redirectToAppWithFullResponse($responseData, $provider);
 
         } catch (Exception $e) {
             LogService::exception($e, [
@@ -173,6 +183,35 @@ class SocialAuthController extends Controller
         LogService::auth('info', 'Redirecting to mobile app', [
             'redirect_url' => $redirectUrl,
             'params' => $params
+        ]);
+
+        // Return redirect response
+        return redirect($redirectUrl);
+    }
+
+    /**
+     * Redirect to mobile app with full response data (same structure as normal login)
+     */
+    private function redirectToAppWithFullResponse($responseData, $provider)
+    {
+        // Encode the full response data as JSON and then base64 for URL safety
+        $encodedData = base64_encode(json_encode($responseData));
+        
+        // Create parameters for the deep link
+        $params = http_build_query([
+            'success' => 'true',
+            'provider' => $provider,
+            'data' => $encodedData
+        ]);
+        
+        $redirectUrl = $this->appScheme . '?' . $params;
+        
+        LogService::auth('info', 'Redirecting to mobile app with full response data', [
+            'redirect_url' => $redirectUrl,
+            'provider' => $provider,
+            'user_id' => $responseData['user']->id ?? null,
+            'has_token' => isset($responseData['token']),
+            'has_user' => isset($responseData['user'])
         ]);
 
         // Return redirect response
