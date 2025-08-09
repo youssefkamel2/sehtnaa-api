@@ -53,6 +53,11 @@ class RequestController extends Controller
                 return $this->error('Customer profile not found', 404);
             }
 
+            // Check if user has a phone number (required for creating requests)
+            if (is_null($user->phone)) {
+                return $this->error('Phone number is required to create a request. Please update your profile with a valid phone number.', 422);
+            }
+
             // Handle JSON string inputs
             $serviceIds = is_array($request->service_ids) ? $request->service_ids : (json_decode($request->service_ids, true) ?? []);
             $requirements = is_array($request->requirements) ? $request->requirements : (json_decode($request->requirements, true) ?? []);
@@ -69,7 +74,7 @@ class RequestController extends Controller
                 'service_ids.*' => 'exists:services,id',
                 'latitude' => 'required|numeric',
                 'longitude' => 'required|numeric',
-                'phone' => 'required|string',
+
                 'gender' => 'required|in:male,female',
                 'additional_info' => 'nullable|string',
                 'age' => 'required|integer|min:1',

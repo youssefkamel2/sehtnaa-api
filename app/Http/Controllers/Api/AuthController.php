@@ -28,7 +28,7 @@ class AuthController extends Controller
             'last_name' => 'required|string',
             'email' => 'required|email|unique:users',
             'phone' => [
-                'required',
+                'nullable',
                 'string',
                 'unique:users',
                 'regex:/^01[0125][0-9]{8}$/'

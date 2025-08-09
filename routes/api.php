@@ -26,7 +26,6 @@ Route::prefix('auth')->group(function () {
 Route::get('/auth/social/{provider}/url', [SocialAuthController::class, 'getAuthUrl']);
 Route::match(['get', 'post'], '/auth/social/{provider}/callback', [SocialAuthController::class, 'handleCallback']);
 
-
 Route::prefix('reset-password')->group(function () {
     Route::post('/send-code', [ResetPasswordController::class, 'sendCode']);
     Route::post('/verify-code', [ResetPasswordController::class, 'verifyCode']);

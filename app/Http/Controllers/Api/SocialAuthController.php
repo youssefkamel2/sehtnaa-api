@@ -289,17 +289,12 @@ class SocialAuthController extends Controller
         $firstName = trim($nameParts[0] ?: 'Customer');
         $lastName = trim($nameParts[1] ?? '');
 
-        // Generate unique temporary phone number
-        do {
-            $tempPhone = 'temp_' . Str::random(10);
-        } while (User::where('phone', $tempPhone)->exists());
-
         // Create user
         $user = User::create([
             'first_name' => $firstName,
             'last_name' => $lastName,
             'email' => $socialUser->getEmail(),
-            'phone' => $tempPhone,
+            'phone' => null,
             'password' => Hash::make(Str::random(32)), // Random password since they'll use social login
             'user_type' => 'customer',
             'status' => 'active',
