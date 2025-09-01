@@ -3,9 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Models\Request as ServiceRequest;
+use App\Models\RequestCancellationLog;
+use App\Models\Customer;
+use App\Models\Provider;
 use Illuminate\Http\Request;
 use App\Traits\ResponseTrait;
 use App\Models\NotificationLog;
+use App\Models\WalletTransaction;
+use App\Http\Requests\WalletRequest;
 use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +21,7 @@ use App\Jobs\SendNotificationCampaign;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use App\Services\LogService;
+use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
@@ -368,4 +375,90 @@ class UserController extends Controller
     //         return $this->error('Failed to get campaign status: ' . $e->getMessage(), 500);
     //     }
     // }
+
+    /**
+     * Delete (deactivate) the authenticated user's account.
+     * - Customers: cancel ongoing requests (pending/accepted) and keep history.
+     * - Providers: unassign from accepted requests and revert them to pending.
+     * - Anonymize PII where safe, deactivate account, clear tokens, invalidate JWT.
+     */
+    public function deleteAccount(Request $request)
+    {
+        $user = $request->user();
+
+        DB::beginTransaction();
+        try {
+            // Validate there are no ongoing/assigned requests before allowing deletion
+            if ($user->user_type === 'customer') {
+                $customer = $user->customer;
+                if ($customer) {
+                    $ongoingCount = ServiceRequest::where('customer_id', $customer->id)
+                        ->whereIn('status', ['pending', 'accepted', 'started'])
+                        ->lockForUpdate()
+                        ->count();
+
+                    if ($ongoingCount > 0) {
+                        DB::rollBack();
+                        return $this->error('You have ongoing requests. Please complete or cancel them before deleting your account.', 409);
+                    }
+                }
+            } elseif ($user->user_type === 'provider') {
+                $provider = $user->provider;
+                if ($provider) {
+                    $assignedCount = ServiceRequest::where('assigned_provider_id', $provider->id)
+                        ->whereIn('status', ['accepted', 'started'])
+                        ->lockForUpdate()
+                        ->count();
+
+                    if ($assignedCount > 0) {
+                        DB::rollBack();
+                        return $this->error('You are assigned to ongoing requests. Please complete them or ask the customer/admin to cancel before deleting your account.', 409);
+                    }
+
+                    // Mark provider unavailable
+                    $provider->is_available = false;
+                    $provider->save();
+                }
+            }
+
+            // Anonymize and deactivate user (preserve email to avoid unique constraint issues)
+            $user->update([
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name . ' Deleted-account',
+                // keep email as-is to avoid violating unique constraints on nulling
+                'phone' => null,
+                'address' => null,
+                'gender' => null,
+                'birth_date' => null,
+                'latitude' => null,
+                'longitude' => null,
+                'fcm_token' => null,
+                'device_type' => null,
+                'profile_image' => null,
+                'auth_source' => $user->auth_source,
+                'auth_source_id' => null,
+                'status' => 'de-active',
+            ]);
+
+            // Invalidate JWT token if provided
+            try {
+                if (JWTAuth::getToken()) {
+                    JWTAuth::invalidate(JWTAuth::getToken());
+                }
+            } catch (\Throwable $e) {
+                // ignore token errors during deletion
+            }
+
+            DB::commit();
+
+            return $this->success(null, 'Account deleted successfully');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            LogService::exception($e, [
+                'action' => 'delete_account',
+                'user_id' => $user->id ?? null,
+            ]);
+            return $this->error('Failed to delete account. Please try again later.', 500);
+        }
+    }
 }

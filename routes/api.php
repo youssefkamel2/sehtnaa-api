@@ -125,6 +125,7 @@ Route::prefix('user')->middleware(['auth:api'])->group(function () {
     Route::post('/update-language', [UserController::class, 'updateLanguage']);
     Route::post('/update-profile-image', [UserController::class, 'updateProfileImage']);
     Route::post('/update-password', [UserController::class, 'changePassword']);
+    Route::post('/delete-account', [UserController::class, 'deleteAccount']);
     Route::get('/ongoing-requests', [RequestController::class, 'getOngoingRequests']);
 });
 
