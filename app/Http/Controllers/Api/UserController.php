@@ -428,7 +428,7 @@ class UserController extends Controller
                 // keep email as-is to avoid violating unique constraints on nulling
                 'phone' => null,
                 'address' => null,
-                'gender' => null,
+                'gender' => $user->gender,
                 'birth_date' => null,
                 'latitude' => null,
                 'longitude' => null,
