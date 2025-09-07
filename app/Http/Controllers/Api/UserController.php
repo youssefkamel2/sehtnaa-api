@@ -378,9 +378,8 @@ class UserController extends Controller
 
     /**
      * Delete (deactivate) the authenticated user's account.
-     * - Customers: cancel ongoing requests (pending/accepted) and keep history.
-     * - Providers: unassign from accepted requests and revert them to pending.
-     * - Anonymize PII where safe, deactivate account, clear tokens, invalidate JWT.
+     * Blocks deletion if there are ongoing/assigned requests.
+     * Frees the email (by appending +deleted suffix) so the user can re-register.
      */
     public function deleteAccount(Request $request)
     {
@@ -388,75 +387,57 @@ class UserController extends Controller
 
         DB::beginTransaction();
         try {
-            // Validate there are no ongoing/assigned requests before allowing deletion
+            // Block if customer has ongoing requests
             if ($user->user_type === 'customer') {
                 $customer = $user->customer;
-                if ($customer) {
-                    $ongoingCount = ServiceRequest::where('customer_id', $customer->id)
-                        ->whereIn('status', ['pending', 'accepted', 'started'])
-                        ->lockForUpdate()
-                        ->count();
-
-                    if ($ongoingCount > 0) {
-                        DB::rollBack();
-                        return $this->error('You have ongoing requests. Please complete or cancel them before deleting your account.', 409);
-                    }
+                if ($customer && $customer->requests()->whereIn('status', ['pending', 'accepted', 'started'])->exists()) {
+                    DB::rollBack();
+                    return $this->error('You have ongoing requests. Please complete or cancel them before deleting your account.', 409);
                 }
-            } elseif ($user->user_type === 'provider') {
+            }
+
+            // Block if provider is assigned to requests
+            if ($user->user_type === 'provider') {
                 $provider = $user->provider;
+                if ($provider && ServiceRequest::where('assigned_provider_id', $provider->id)->whereIn('status', ['accepted', 'started'])->exists()) {
+                    DB::rollBack();
+                    return $this->error('You are assigned to ongoing requests. Please complete them first.', 409);
+                }
                 if ($provider) {
-                    $assignedCount = ServiceRequest::where('assigned_provider_id', $provider->id)
-                        ->whereIn('status', ['accepted', 'started'])
-                        ->lockForUpdate()
-                        ->count();
-
-                    if ($assignedCount > 0) {
-                        DB::rollBack();
-                        return $this->error('You are assigned to ongoing requests. Please complete them or ask the customer/admin to cancel before deleting your account.', 409);
-                    }
-
-                    // Mark provider unavailable
                     $provider->is_available = false;
                     $provider->save();
                 }
             }
 
-            // Anonymize and deactivate user (preserve email to avoid unique constraint issues)
-            $user->update([
-                'first_name' => $user->first_name,
-                'last_name' => $user->last_name . ' Deleted-account',
-                // keep email as-is to avoid violating unique constraints on nulling
-                'phone' => null,
-                'address' => null,
-                'gender' => $user->gender,
-                'birth_date' => null,
-                'latitude' => null,
-                'longitude' => null,
-                'fcm_token' => null,
-                'device_type' => null,
-                'auth_source' => $user->auth_source,
-                'auth_source_id' => null,
-                'status' => 'de-active',
-            ]);
+            // Modify email to free it up for re-registration
+            $originalEmail = $user->email;
+            if (!empty($originalEmail) && str_contains($originalEmail, '@')) {
+                [$local, $domain] = explode('@', $originalEmail, 2);
+                $user->email = $local . '+deleted-' . $user->id . '-' . now()->format('YmdHis') . '@' . $domain;
+            }
+            
+            $user->last_name .= ' Deleted-account';
+            $user->status = 'de-active';
+            $user->save();
 
-            // Invalidate JWT token if provided
+            // Soft delete the user
+            $user->delete();
+
+            // Invalidate JWT token
             try {
-                if (JWTAuth::getToken()) {
-                    JWTAuth::invalidate(JWTAuth::getToken());
+                if ($token = JWTAuth::getToken()) {
+                    JWTAuth::invalidate($token);
                 }
             } catch (\Throwable $e) {
-                // ignore token errors during deletion
+                // Ignore token errors
             }
 
             DB::commit();
+            return $this->success(null, 'Account deleted successfully.');
 
-            return $this->success(null, 'Account deleted successfully');
         } catch (\Throwable $e) {
             DB::rollBack();
-            LogService::exception($e, [
-                'action' => 'delete_account',
-                'user_id' => $user->id ?? null,
-            ]);
+            LogService::exception($e, ['action' => 'delete_account', 'user_id' => $user->id]);
             return $this->error('Failed to delete account. Please try again later.', 500);
         }
     }

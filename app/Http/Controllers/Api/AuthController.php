@@ -162,14 +162,36 @@ class AuthController extends Controller
         }
 
         $credentials = $request->only('email', 'password');
-        if (!$token = JWTAuth::attempt($credentials)) {
+
+        // Manually find user including soft-deleted ones
+        $user = User::withTrashed()->where('email', $credentials['email'])->first();
+
+        // Check if user exists and if the password is correct
+        if (!$user || !Hash::check($credentials['password'], $user->password)) {
             activity()
                 ->withProperties(['email' => $request->email])
                 ->log('Invalid login attempt.');
             return $this->error('The provided email or password is incorrect.', 401);
         }
 
-        $user = User::with(['admin'])->find(auth()->id());
+        // Check if the user is soft-deleted
+        if ($user->trashed()) {
+            activity()
+                ->causedBy($user)
+                ->withProperties(['user_id' => $user->id])
+                ->log('Login attempt for a soft-deleted account.');
+            return $this->error('This account was deleted. Please register again to create a new account.', 403);
+        }
+
+        // Attempt to create a token
+        if (!$token = JWTAuth::fromUser($user)) {
+            activity()
+                ->withProperties(['email' => $request->email])
+                ->log('Invalid login attempt.');
+            return $this->error('The provided email or password is incorrect.', 401);
+        }
+
+        // At this point, login is successful and user is not soft-deleted
 
         if ($user->user_type !== $request->user_type) {
             activity()
@@ -238,14 +260,8 @@ class AuthController extends Controller
             }
         }
 
-        if ($user->status === 'de-active') {
-            activity()
-                ->causedBy($user)
-                ->withProperties(['user_id' => $user->id])
-                ->log('Deactivated account login attempt.');
-
-            return $this->error('Your account is deactivated', 403);
-        }
+                // The 'de-active' status check is now handled by the trashed() check above, 
+        // as we set the status to 'de-active' right before soft-deleting.
 
         activity()
             ->causedBy($user)
