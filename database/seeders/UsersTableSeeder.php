@@ -14,23 +14,23 @@ class UsersTableSeeder extends Seeder
     public function run()
     {
         // Create Super Admin
-        $superAdmin = User::create([
-            'first_name' => 'Super',
-            'last_name' => 'Admin',
-            'email' => 'support@sehtnaa.com',
-            'phone' => '01148474762',
-            'password' => Hash::make('password'),
-            'user_type' => 'admin',
-            'status' => 'active',
-            'address' => '123 Main Street',
-            'gender' => 'male'
-        ]);
+        // $superAdmin = User::create([
+        //     'first_name' => 'Super',
+        //     'last_name' => 'Admin',
+        //     'email' => 'support@sehtnaa.com',
+        //     'phone' => '01148474762',
+        //     'password' => Hash::make('password'),
+        //     'user_type' => 'admin',
+        //     'status' => 'active',
+        //     'address' => '123 Main Street',
+        //     'gender' => 'male'
+        // ]);
 
-        // Create Admin record
-        Admin::create([
-            'user_id' => $superAdmin->id,
-            'role' => 'super_admin'
-        ]);
+        // // Create Admin record
+        // Admin::create([
+        //     'user_id' => $superAdmin->id,
+        //     'role' => 'super_admin'
+        // ]);
 
         // Create Customer User
         $customerUser = User::create([
