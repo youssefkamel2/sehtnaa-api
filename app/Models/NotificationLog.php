@@ -26,7 +26,8 @@ class NotificationLog extends Model
         'device_token',
         'attempts_count',
         'is_sent',
-        'error_message'
+        'error_message',
+        'sent_at'
     ];
 
     protected $dates = [
