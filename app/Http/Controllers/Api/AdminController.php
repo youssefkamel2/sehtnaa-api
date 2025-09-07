@@ -102,7 +102,7 @@ class AdminController extends Controller
             if ($validator->fails()) {
                 return $this->error($validator->errors()->first(), 400);
             }
-
+            
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
@@ -114,7 +114,14 @@ class AdminController extends Controller
             }
 
             if ($user->admin->role === 'super_admin') {
-                return $this->error('Super admin accounts cannot be modified.', 403);
+                // allow the super admin to change his password
+                if ($request->has('password')) {
+                    $user->update([
+                        'password' => Hash::make($request->password)
+                    ]);
+                    return $this->success($user->load('admin'), 'Super admin updated successfully');
+                }
+                return $this->error('You can only change your password.', 403);
             }
 
             $updateData = array_filter([
