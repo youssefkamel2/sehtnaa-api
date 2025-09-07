@@ -53,12 +53,12 @@ class NotificationLog extends Model
     public function scopeFailed($query)
     {
         return $query->where('is_sent', false)
-                    ->where('attempts_count', '>=', config('notification.max_attempts', 3));
+                    ->whereNotNull('error_message');
     }
 
     public function scopePending($query)
     {
         return $query->where('is_sent', false)
-                    ->where('attempts_count', '<', config('notification.max_attempts', 3));
+                    ->whereNull('error_message');
     }
 }

@@ -163,10 +163,8 @@ class SendNotificationCampaign implements ShouldQueue
             ])
         ];
 
-        // Only mark as failed if this was the last attempt
-        if ($log->attempts_count >= $this->tries) {
-            $updateData['is_sent'] = false;
-        }
+        // Mark as failed immediately
+        $updateData['is_sent'] = false;
 
         $log->update($updateData);
 

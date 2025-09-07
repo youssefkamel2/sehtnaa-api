@@ -285,8 +285,8 @@ class UserController extends Controller
                     DB::raw('MIN(created_at) as created_at'),
                     DB::raw('COUNT(*) as total_notifications'),
                     DB::raw('SUM(CASE WHEN is_sent = 1 THEN 1 ELSE 0 END) as sent_count'),
-                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count >= ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as failed_count'),
-                    DB::raw('SUM(CASE WHEN is_sent = 0 AND attempts_count < ' . config('notification.max_attempts', 3) . ' THEN 1 ELSE 0 END) as pending_count'),
+                    DB::raw('SUM(CASE WHEN is_sent = 0 AND error_message IS NOT NULL THEN 1 ELSE 0 END) as failed_count'),
+                    DB::raw('SUM(CASE WHEN is_sent = 0 AND error_message IS NULL THEN 1 ELSE 0 END) as pending_count'),
                     DB::raw('MAX(updated_at) as last_updated_at')
                 ])
                 ->groupBy('campaign_id', 'title', 'body', 'user_type')
