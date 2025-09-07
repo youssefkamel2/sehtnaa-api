@@ -434,7 +434,6 @@ class UserController extends Controller
                 'longitude' => null,
                 'fcm_token' => null,
                 'device_type' => null,
-                'profile_image' => null,
                 'auth_source' => $user->auth_source,
                 'auth_source_id' => null,
                 'status' => 'de-active',
